@@ -59,6 +59,7 @@ def resize_videos(answer):
 
 
 def get_answer(best_match, results, field_mapping, k=3, pageviews=False):
+    import json
 
     # Pega o conteúdo dos atributos esperados, dependo da fonte, através do
     # dicionário de mappings
@@ -100,7 +101,6 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False):
         
         sanitized_answer = sancontent + f'\n\nURL: {header_ref}'
 
-
     # Artigos secundários: Os demais artigo são exibidos de maneira resumida, só título e url, sem detalhes.
     url_list = []
     if len(results) > 1:
@@ -123,20 +123,20 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False):
             answer = answer + f'<br><b><a target="{target}" rel="noopener noreferrer" href="{detail_header_ref}" style="text-decoration: underline">{detail_header}</a></b><br>'
             sanitized_answer = sanitized_answer + f'\n{detail_header}:\n{detail_header_ref}\n'
 
-
     # Caso tenhamos a informação de seção do melhor match nós adicionamos ao final da resposta
     # o link da seção
     if d[best_match.get('source')]["section_url"] in best_match:
+
         section_url = best_match.get(d[best_match.get('source')]["section_url"])
+
         if d[best_match.get('source')]["section"] in best_match:
             section = best_match.get('section')
         else:
             section = 'Clique aqui'
 
-        if section and section_url:
-            answer += f'<br>Caso o artigo que você procura não tenha sido apresentado acima você ainda pode procurá-lo aqui na seção:'
-            answer += f'<br><b><a target="{target}" rel="noopener noreferrer" href="{section_url}" style="text-decoration: underline">{section}</a></b><br>'
-            sanitized_answer += f'<br>Caso o artigo que você procura não tenha sido apresentado acima você ainda pode procurá-lo aqui na seção:\n{section_url}'
+        answer += f'<br>Caso o artigo que você procura não tenha sido apresentado acima você ainda pode procurá-lo aqui na seção:'
+        answer += f'<br><b><a target="{target}" rel="noopener noreferrer" href="{section_url}" style="text-decoration: underline">{section}</a></b><br>'
+        sanitized_answer += f'<br>Caso o artigo que você procura não tenha sido apresentado acima você ainda pode procurá-lo aqui na seção:\n{section_url}'
 
     return answer, sanitized_answer, url_list, header, header_ref, labels
     
@@ -268,7 +268,9 @@ def get_results(results, channel, k=3):
                               "header_ref": "html_url",
                               "content": "situacao_requisicao",
                               "sanitized_content": "situacao_requisicao",
-                              "tags": "labels"}}
+                              "tags": "labels",
+                              "section":"",
+                              "section_url":""}}
 
     # Montamos a resposta e resposta limpa baseado nos resultados
     answer, sanitized_answer, url_list, title_best_match, url_best_match, labels = get_answer(best_match, results, field_mapping=field_mapping, k=k, pageviews=pv)
@@ -302,25 +304,11 @@ def update_user_access(login, product, module, segment, question, email):
     'email': email,
     'lastsearchedproduct': product,
     'lastsearchedsegment': segment,
-    'lastsearchedquestion': question
+    'lastsearchedquestion': question}]
 
     Staging(login).send_data(staging_name='user_access',
         connector_id='2fa99cd791a140aa903be33eda3f4108',
         data=record)
-
-
-# Pega a lista de resultados de uma consulta, ordena e adiciona um novo campo indicando a origem do artigo
-def sort_and_add_source(results, source):
-    # Se o modelo retornou resultados para a família de módulos nós ordenamos os artigos em ordem decrescente de acordo com o score.
-    if results:
-        results_sorted = sorted(related_modules_results, key=operator.itemgetter('score'), reverse=True)
-
-        # Adicionando a origen do artigo
-        for item in results_sorted:
-            item.update({"source":source})
-
-    return results_sorted
-
 
 def main():
 
@@ -553,18 +541,23 @@ def main():
       for threshold in thresholds:
         best_match = None
 
+        answer = f"Encontrado um total de {len(results_kcs)} artigos no KCS, {len(results_tdn)} no TDN.\n"
+
        # Filtrando apenas resultados acima do threshold
         tmp_results_kcs = [result for result in results_kcs if result.get('score') >= threshold/100]
         tmp_results_tdn = [result for result in results_tdn if result.get('score') >= threshold/100]
 
+        answer += f"Artigos acima do threshold {threshold}: {len(tmp_results_kcs)} KCS; {len(tmp_results_tdn)} TDN.\n"
+
         # ordena o ranking de resultados para cada base e adiciona a tag da origim para facilitar formatação
-        tmp_results_kcs = sort_and_add_source(results=tmp_results_kcs, source="kcs")
-        tmp_results_tdn = sort_and_add_source(results=tmp_results_tdn, source="tdn")
+        for item in tmp_results_kcs: item.update({"source":"kcs"})
+        for item in tmp_results_tdn: item.update({"source":"tdn"})
 
         # Se nenhum artigo for retornado do KCS procura nos módulos relacionados
         if not tmp_results_kcs:
-            tmp_related_modules_results = [result for result in related_modules_results if result.get('score') >= threshold/100]
-            tmp_results_kcs = sort_and_add_source(results=tmp_related_modules_results, source="kcs_related_modules")
+            tmp_results_kcs = [result for result in related_modules_results if result.get('score') >= threshold/100]
+            for item in tmp_results_kcs: item.update({"source":"kcs"})
+            answer += f"{len(tmp_results_kcs)} adicionados pela pesquisa em módulos relacionados.\n"
 
         # Coloca todos os artigos acima do threshold em uma mesma lista
         all_results = tmp_results_kcs + tmp_results_tdn
@@ -572,8 +565,11 @@ def main():
         # Ordena a lista pela score
         all_results.sort(key=lambda x: x.get('score'), reverse=True)
 
+        answer += f"Total de {len(all_results)} artigos resultantes.\n"
+        #return textResponse(f'{answer}', jumpTo='Criar ticket de log', customLog=custom_log)
+
         # Obtemos a resposta, o melhor match e suas respectivas informações
-        answer, san_answer, best_match, parms = get_results(tmp_results, channel, k=3)
+        answer, san_answer, best_match, parms = get_results(all_results, channel, k=3)
 
         parameters.update(parms)
         custom_log = get_custom_log(parameters)
