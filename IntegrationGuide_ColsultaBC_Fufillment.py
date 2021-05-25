@@ -112,8 +112,7 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False):
             sanitized_answer = sanitized_answer + '\n\n\nAqui tenho outros artigos que podem ajudar:'
 
         else:
-            answer = 'Sua busca foi abrangente e retornou muitos resultados.'
-            answer += f'<br>Aqui estão os {len(results)} artigos relacionados à sua pergunta que foram mais consultados pelos nossos clientes.'
+            answer = f'Sua busca foi abrangente e retornou muitos resultados. Aqui estão os {len(results)} artigos relacionados à sua pergunta que foram mais consultados pelos nossos clientes.'
             sanitized_answer = answer
 
         tmp_results = results[:k]
@@ -144,7 +143,6 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False):
         sanitized_answer += f'<br>Caso o artigo que você procura não tenha sido apresentado acima você ainda pode procurá-lo aqui na seção:\n{section_url}'
 
     return answer, sanitized_answer, url_list, header, header_ref, labels
-    
 
 def orderby_page_views(login, article_results, k=5):
     # Criamos a resposta para o usuário usando métricas de acesso dos artigos vindas
@@ -564,10 +562,11 @@ def main():
       
       # Iteramos a lista de threshold, de forma a irmos diminuindo o threshold
       # até obtermos uma resposta
+      answer = ""
       for threshold in thresholds:
         best_match = None
 
-        answer = f"Encontrado um total de {len(results_kcs)} artigos no KCS, {len(results_tdn)} no TDN.\n"
+        answer += f"Encontrado um total de {len(results_kcs)} artigos no KCS, {len(results_tdn)} no TDN.\n"
 
         # Filtrando apenas resultados acima do threshold
         tmp_results_kcs = [result for result in results_kcs if result.get('score') >= threshold/100]
@@ -606,6 +605,7 @@ def main():
         # Retornamos a resposta para o usuário
         return textResponse(f'{answer}', jumpTo='Criar ticket de log', customLog=custom_log)
 
+      answer += f"Nenhum threshold satisfeito, redirecionando para elastic search.\n"
 
       # Caso nenhuma resposta satisfaça os thresholds.Fallback: Elasticsearch
       best_match = None
@@ -613,6 +613,9 @@ def main():
       query = Query(login, get_aggs=True, only_hits=False)
       response = query.named(named_query = 'get_document_that_contains', json_query=params).go().results
 
+      answer += f"elasticsearch.checkpoint=1.\n"
+
+      results = []
       if response and response[0].get('hits'):
         results = sorted(response[0].get('hits'), key=operator.itemgetter('_score'), reverse=True)
       elif related_modules:
@@ -621,6 +624,8 @@ def main():
         if response and response[0].get('hits'):
           results = sorted(response[0].get('hits'), key=operator.itemgetter('_score'), reverse=True)
 
+      answer += f"elasticsearch.checkpoint=2. len(results) = {len(results)}. \n"
+      
       if results:
         results = [result.get('mdmGoldenFieldAndValues') for result in results if result.get('_score') > 18]
         aux = []
@@ -637,7 +642,8 @@ def main():
         custom_log = get_custom_log(parameters)
         return textResponse(f'{answer}', jumpTo='Criar ticket de log', customLog=custom_log)
 
-
+      answer += f"elasticsearch.checkpoint=4.\n"
+    
       # Caso nenhum artigo tenha sido retornado pela busca do usuário nós damos mais 2 tentativas
       # para eles tentarem refazer a consulta usando outras palavras antes de enviá-los para o fluxo
       # de transbordo ou abertura de ticket.
@@ -655,6 +661,8 @@ def main():
       parameters['attempts'] = attempts
       parameters['max_attempts'] = False
 
+      answer += f"Redirecionando para nova tentativa. attempts={attempts}. \n"
+
       # Caso ainda não tenham sido feitas 3 tentativas pedimos para os usuários
       # tentarem refazer a consulta usando outras palavras
       if attempts < 3:
@@ -663,6 +671,9 @@ def main():
       # Caso as 3 tentativas já tenham sido feitas levamos os usuários para o fluxo
       # de transbordo ou abertura de ticket
       else:
+        answer += f"Tentativas excedidas: attempts={attempts}. Redirencionando ao fluxo de abertura de ticket.\n"
+        #return textResponse(f'{answer}', jumpTo='Criar ticket de log', customLog=custom_log)
+
         # Como nenhum artigo foi encontrado definimos automaticamente o feedback como negativo
         parameters['custom_feedback'] = 'no'
         # Analisamos se o usuário é um curador que pode abrir tickets
