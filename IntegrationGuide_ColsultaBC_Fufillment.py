@@ -64,6 +64,7 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False):
     # Pega o conteúdo dos atributos esperados, dependo da fonte, através do
     # dicionário de mappings
     d = field_mapping
+    target = '_blank'
 
     # Tratando resultado principal: best match, maior score
     if not pageviews:
@@ -80,7 +81,6 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False):
         labels = best_match.get(d[best_match.get('source')]["tags"])
 
         # Adicionamos ao início da resposta o título do artigo de melhor match com sua respectiva URL de acesso
-        target = '_blank'
         answer = f'<br><b><a target="{target}" rel="noopener noreferrer" href="{header_ref}" style="text-decoration: underline"><strong>{header}</strong></a></b><br>' + content
         
         # Caso o artigo com maior score seja do TDN adicionamos o link para o patch, caso disponível
@@ -100,6 +100,8 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False):
                 answer += f'<br>Selecione a versão para baixar pacote de atualização:' + ", ".join(patch_links)
         
         sanitized_answer = sancontent + f'\n\nURL: {header_ref}'
+    else:
+        header = header_ref = labels = None
 
     # Artigos secundários: Os demais artigo são exibidos de maneira resumida, só título e url, sem detalhes.
     url_list = []
@@ -108,12 +110,13 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False):
             results.pop(results.index(best_match))
             answer = answer + '<br><br>Aqui tenho outros artigos que podem ajudar:'
             sanitized_answer = sanitized_answer + '\n\n\nAqui tenho outros artigos que podem ajudar:'
-            tmp_results = results[:k]
+
         else:
             answer = 'Sua busca foi abrangente e retornou muitos resultados.'
             answer += f'<br>Aqui estão os {len(results)} artigos relacionados à sua pergunta que foram mais consultados pelos nossos clientes.'
             sanitized_answer = answer
-            tmp_results = results
+
+        tmp_results = results[:k]
 
         for r in tmp_results:
             detail_header = r.get(d[r.get('source')]["header"])
@@ -122,6 +125,8 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False):
 
             answer = answer + f'<br><b><a target="{target}" rel="noopener noreferrer" href="{detail_header_ref}" style="text-decoration: underline">{detail_header}</a></b><br>'
             sanitized_answer = sanitized_answer + f'\n{detail_header}:\n{detail_header_ref}\n'
+
+    #return "get_results.get_answer.checkpoint=2", "", [], "", "", []
 
     # Caso tenhamos a informação de seção do melhor match nós adicionamos ao final da resposta
     # o link da seção
@@ -141,16 +146,10 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False):
     return answer, sanitized_answer, url_list, header, header_ref, labels
     
 
-def orderby_page_views(channel, article_results, k=5):
+def orderby_page_views(login, article_results, k=5):
     # Criamos a resposta para o usuário usando métricas de acesso dos artigos vindas
     # do Google Analytics
     from pycarol.query import Query
-
-    login = Carol(domain='protheusassistant',
-          app_name=' ',
-          organization='totvs',
-          auth=ApiKeyAuth('12bb49601ef541a4b59ae86d67e5ab02'),
-          connector_id='278270a32da04d8f905590937fbb3fef')
 
     # identificando todos os ids unicos e adicionando-os como filtros da busca
     uniq_ids = list(set([result.get('id') for result in article_results]))
@@ -164,16 +163,46 @@ def orderby_page_views(channel, article_results, k=5):
     article_results_ranked = []
     for i, pageview in enumerate(page_views_results):        
         document_result = [result for result in article_results if str(result.get('id')) == pageview.get('documentid')]
-        document_result.update({"source":"kcs_pageviews"})
+        document_result = document_result[0]
+        document_result.update({"source":"kcs"})
         article_results_ranked.append(document_result)
 
     if article_results_ranked:
         # Pegamos até 5 artigos dos artigos mais consultados
         article_results_ranked = article_results_ranked[:k]
     else:
-        article_results_ranked = None
+        article_results_ranked = article_results
 
     return article_results_ranked
+
+
+def top_page_views(login, module, k):
+    # Criamos a resposta para o usuário usando métricas de acesso dos artigos vindas
+    # do Google Analytics
+    from pycarol.query import Query
+
+    query = Query(login)
+    params = {'module': module}
+    page_views_results = query.named(named_query = 'get_document_views', json_query=params).go().results
+
+    page_views_ids = [page_view.get('documentid') for page_view in page_views_results]
+    params = {'ids': page_views_ids}
+    article_results = query.named(named_query = 'get_documents_by_ids', json_query=params).go().results
+
+   # itera os conteudos com mais visualizações
+    article_results_ranked = []
+    for i, pageview in enumerate(page_views_results):        
+        document_result = [result for result in article_results if str(result.get('id')) == pageview.get('documentid')]
+        article_results_ranked.append(document_result)
+
+    if article_results_ranked:
+        # Pegamos até 5 artigos dos artigos mais consultados
+        article_results_ranked = article_results_ranked[:k]
+        best_match = article_results_ranked[0]
+    else:
+        article_results_ranked = best_match = None
+
+    return best_match, article_results_ranked
 
 
 def get_model_answer(sentence, product, module, tags, threshold, db="KCS"):
@@ -229,7 +258,7 @@ def get_model_answer(sentence, product, module, tags, threshold, db="KCS"):
     return results, total_matches
 
 
-def get_results(results, channel, k=3):
+def get_results(login, results, k=3):
     # Baseado nos resultados do modelo ou do elasticsearch retornamos a resposta
     # avaliando se é necessário usar as métricas do Analytics
     import re
@@ -239,7 +268,7 @@ def get_results(results, channel, k=3):
     # page views para estes artigos.
     pv=False
     if (len(results) > 10):
-        best_match, results = orderby_page_views(channel, article_results=results)
+        results = orderby_page_views(login, article_results=results)
         pv=True
 
     # Consideramos o melhor match o primeiro item da lista pois possui maior score
@@ -272,8 +301,12 @@ def get_results(results, channel, k=3):
                               "section":"",
                               "section_url":""}}
 
+    #return "get_results.checkpoint=3", "", None, {}
+
     # Montamos a resposta e resposta limpa baseado nos resultados
     answer, sanitized_answer, url_list, title_best_match, url_best_match, labels = get_answer(best_match, results, field_mapping=field_mapping, k=k, pageviews=pv)
+
+    #return answer, sanitized_answer, best_match, {}
 
     # Guardando os parâmetros para debug
     parameters = {}
@@ -330,8 +363,6 @@ def main():
     import re
     import operator
     import copy
-    import requests
-    import json
     import random as random
     from pycarol import Carol, Staging, ApiKeyAuth
     from pycarol.query import Query
@@ -458,20 +489,15 @@ def main():
       # Se o usuário enviar como pergunta exatamente a mesma sentença que ele enviou para informar o módulo
       # nós retornamos os 5 artigos mais consultados daquele módulo baseado nas métricas do Google Analytics.
       if module_original and question.lower() == module_original.lower():
-        answer, best_match, url_list = get_answer_page_views(login, channel, elasticsearch=True, article_results=None)
-        if answer:
-          labels = re.sub('\[|\]|\"', '', best_match['labels']).split(',')
-          parameters['labels'] = labels
-          parameters['section_id'] = best_match.get('sectionid')
-          parameters['title'] = best_match.get('mdmtitle')
-          parameters['last_url'] = best_match.get('mdmurl')
-          for i, url in enumerate(url_list):
-            idx = i + 1
-            if url:
-              parameters[f'url_{idx}'] = url
-          parameters['last_answer'] = answer
-          custom_log = get_custom_log(parameters)
-          return textResponse(f'{answer}', jumpTo='Criar ticket de log', customLog=custom_log)
+        best_match, pv_results = top_page_views(login, module_original, k)
+        for item in pv_results: item.update({"source":"elasticsearch"})
+
+        # Obtemos a resposta, o melhor match e suas respectivas informações
+        answer, san_answer, best_match, parms = get_results(login, pv_results, k=3)
+        parameters.update(parms)
+        custom_log = get_custom_log(parameters)
+
+        return textResponse(f'{answer}', jumpTo='Criar ticket de log', customLog=custom_log)
 
       # TODO: Família de módulos
       related_modules = []
@@ -543,7 +569,7 @@ def main():
 
         answer = f"Encontrado um total de {len(results_kcs)} artigos no KCS, {len(results_tdn)} no TDN.\n"
 
-       # Filtrando apenas resultados acima do threshold
+        # Filtrando apenas resultados acima do threshold
         tmp_results_kcs = [result for result in results_kcs if result.get('score') >= threshold/100]
         tmp_results_tdn = [result for result in results_tdn if result.get('score') >= threshold/100]
 
@@ -562,6 +588,9 @@ def main():
         # Coloca todos os artigos acima do threshold em uma mesma lista
         all_results = tmp_results_kcs + tmp_results_tdn
 
+        # Caso nenhum artigo atenda o threshold de score
+        if not all_results: continue
+
         # Ordena a lista pela score
         all_results.sort(key=lambda x: x.get('score'), reverse=True)
 
@@ -569,7 +598,7 @@ def main():
         #return textResponse(f'{answer}', jumpTo='Criar ticket de log', customLog=custom_log)
 
         # Obtemos a resposta, o melhor match e suas respectivas informações
-        answer, san_answer, best_match, parms = get_results(all_results, channel, k=3)
+        answer, san_answer, best_match, parms = get_results(login, all_results, k=3)
 
         parameters.update(parms)
         custom_log = get_custom_log(parameters)
@@ -601,7 +630,7 @@ def main():
             aux.append(r)
 
         results = aux
-        answer, san_answer, best_match, parms = get_results(results, channel, k=3)
+        answer, san_answer, best_match, parms = get_results(login, results, k=3)
 
       if best_match:
         parameters.update(parms)
