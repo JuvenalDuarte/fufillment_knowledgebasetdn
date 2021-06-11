@@ -58,13 +58,28 @@ def resize_videos(answer):
     return answer
 
 
-def get_answer(best_match, results, field_mapping, k=3, pageviews=False):
+def open_url_in_new_tab(answer):
+    import re
+    answer = re.sub(r"\\s", re.escape(r" "), answer)
+    answer = answer.replace('target="_self"', 'target="_blank"')
+    answer = answer.replace('rel="undefined""', 'rel="noopener"')
+    matches = re.finditer('<a\s(.*?)<\/a>', answer, re.IGNORECASE)
+    for match in matches:
+        match_content = match.group()
+        if 'target="_blank" rel="noopener"' not in match_content:
+            answer = re.sub(re.escape(match_content), f'<a target="_blank" rel="noopener" {match_content}</a>', answer)
+    return answer
+  
+ 
+def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel=None):
     import json
 
     # Pega o conteúdo dos atributos esperados, dependo da fonte, através do
     # dicionário de mappings
     d = field_mapping
-    target = '_blank'
+    
+    # Caso o canal não seja o portal não podemos abrir uma nova aba no navegador.
+    target = '_blank' if channel != 'portal' else '_placeholder'
 
     # Tratando resultado principal: best match, maior score
     if not pageviews:
@@ -77,6 +92,7 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False):
         content = best_match.get(d[best_match.get('source')]["content"])
         content = resize_images(content)
         content = resize_videos(content)
+        content = open_url_in_new_tab(content)
         sancontent = best_match.get(d[best_match.get('source')]["sanitized_content"])
         labels = best_match.get(d[best_match.get('source')]["tags"])
 
@@ -103,7 +119,7 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False):
     else:
         header = header_ref = labels = None
 
-    # Artigos secundários: Os demais artigo são exibidos de maneira resumida, só título e url, sem detalhes.
+    # Artigos secundários: Os demais artigos são exibidos de maneira resumida, só título e url, sem detalhes.
     url_list = []
     if len(results) > 1:
         if not pageviews:
@@ -112,7 +128,8 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False):
             sanitized_answer = sanitized_answer + '\n\n\nAqui tenho outros artigos que podem ajudar:'
 
         else:
-            answer = f'Sua busca foi abrangente e retornou muitos resultados. Aqui estão os {len(results)} artigos relacionados à sua pergunta que foram mais consultados pelos nossos clientes.'
+            answer = 'Sua busca foi abrangente e retornou muitos resultados.'
+            answer += f'<br>Aqui estão os {len(results)} artigos relacionados à sua pergunta que foram mais consultados pelos nossos clientes.'
             sanitized_answer = answer
 
         tmp_results = results[:k]
@@ -124,8 +141,6 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False):
 
             answer = answer + f'<br><b><a target="{target}" rel="noopener noreferrer" href="{detail_header_ref}" style="text-decoration: underline">{detail_header}</a></b><br>'
             sanitized_answer = sanitized_answer + f'\n{detail_header}:\n{detail_header_ref}\n'
-
-    #return "get_results.get_answer.checkpoint=2", "", [], "", "", []
 
     # Caso tenhamos a informação de seção do melhor match nós adicionamos ao final da resposta
     # o link da seção
@@ -143,6 +158,7 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False):
         sanitized_answer += f'<br>Caso o artigo que você procura não tenha sido apresentado acima você ainda pode procurá-lo aqui na seção:\n{section_url}'
 
     return answer, sanitized_answer, url_list, header, header_ref, labels
+    
 
 def orderby_page_views(login, article_results, k=5):
     # Criamos a resposta para o usuário usando métricas de acesso dos artigos vindas
@@ -222,12 +238,14 @@ def get_model_answer(sentence, product, module, tags, threshold, db="KCS"):
         if module:
             filters.append({'filter_field': 'module', 'filter_value': module})
         # Adicionamos os bigrams e tigrams aos filtros da consulta
-        filters.append({'filter_field': 'tags', 'filter_value': tags})
+        #filters.append({'filter_field': 'tags', 'filter_value': tags})
 
         data['k'] = 30
         data['filters'] = filters
+        data['threshold_custom'] = {'tags': 90}
         data['response_columns'] = ['id', 'sentence', 'title', 'section_id', 'html_url', 'solution', 'sanitized_solution', 'tags', 'section_html_url', 'module']
-        api_url = 'https://protheusassistant-searchsupportdocs.apps.carol.ai/query'
+        #api_url = 'https://protheusassistant-searchsupportdocs.apps.carol.ai/query'
+        api_url = 'https://protheusassistant-searchdocshomolog.apps.carol.ai/query'
 
     elif db == "TDN":
         if module:
@@ -256,7 +274,7 @@ def get_model_answer(sentence, product, module, tags, threshold, db="KCS"):
     return results, total_matches
 
 
-def get_results(login, results, k=3):
+def get_results(login, results, channel, k=3, segment=None):
     # Baseado nos resultados do modelo ou do elasticsearch retornamos a resposta
     # avaliando se é necessário usar as métricas do Analytics
     import re
@@ -265,7 +283,7 @@ def get_results(login, results, k=3):
     # ATENÇÂO: Quando temos muitos artigos os documentos TDN são descartados, pois ainda não temos
     # page views para estes artigos.
     pv=False
-    if (len(results) > 10):
+    if (len(results) > 10) and (segment == 'Plataformas'):
         results = orderby_page_views(login, article_results=results)
         pv=True
 
@@ -299,12 +317,8 @@ def get_results(login, results, k=3):
                               "section":"",
                               "section_url":""}}
 
-    #return "get_results.checkpoint=3", "", None, {}
-
     # Montamos a resposta e resposta limpa baseado nos resultados
-    answer, sanitized_answer, url_list, title_best_match, url_best_match, labels = get_answer(best_match, results, field_mapping=field_mapping, k=k, pageviews=pv)
-
-    #return answer, sanitized_answer, best_match, {}
+    answer, sanitized_answer, url_list, title_best_match, url_best_match, labels = get_answer(best_match, results, channel=channel, field_mapping=field_mapping, k=k, pageviews=pv)
 
     # Guardando os parâmetros para debug
     parameters = {}
@@ -370,11 +384,15 @@ def main():
     # Frases para mapear intenções relacionadas com "falar com analista"
     analista_questions =  [
             'falar com analista',
+            'quero falar com um analista',
             'falar com atendente',
+            'quero falar com atendente',
             'falar com suporte',
+            'quero falar com suporte'
             'atendimento humano',
             'abrir ticket',
             'Como abrir chamado',
+            'quero abrir chamado',
             'chamado',
             'abrir chamado a totvs',
             'abrir chamado',
@@ -430,6 +448,8 @@ def main():
     module_original = parameters.get('module.original')
     # Coletamos se o usuário é um curador.
     curator_agent = parameters.get('curator_agent')
+    test = parameters.get('test')
+    homolog = parameters.get('homolog')
 
     # Lê e-mail do usuário
     email = parameters.get('user_email')
@@ -482,8 +502,9 @@ def main():
       query = Query(login)
 
       # Atualizamos os dados de acesso do usuário com o produto, módulo e e-mail do usuário.
-      update_user_access(login, product, module, segment, question, email)
-
+      if not test:
+        update_user_access(login, product, module, segment, question, email)
+        
       # Se o usuário enviar como pergunta exatamente a mesma sentença que ele enviou para informar o módulo
       # nós retornamos os 5 artigos mais consultados daquele módulo baseado nas métricas do Google Analytics.
       if module_original and question.lower() == module_original.lower():
@@ -491,7 +512,7 @@ def main():
         for item in pv_results: item.update({"source":"elasticsearch"})
 
         # Obtemos a resposta, o melhor match e suas respectivas informações
-        answer, san_answer, best_match, parms = get_results(login, pv_results, k=3)
+        answer, san_answer, best_match, parms = get_results(login, pv_results, segment=segment, channel=channel, k=3)
         parameters.update(parms)
         custom_log = get_custom_log(parameters)
 
@@ -499,7 +520,7 @@ def main():
 
       # TODO: Família de módulos
       related_modules = []
-      if curator_agent:
+      if segment.lower() == 'plataformas': # and not homolog:
         params = {'module': module, 'segment': segment}
         related_modules = query.named(named_query = 'get_related_modules', json_query=params).go().results
         if related_modules:
@@ -513,7 +534,7 @@ def main():
             related_products = product
         else:
           related_modules = []
-
+          
       # Se o módulo for do produto Framework (Linha RM) ou Framework (Linha Datasul) usar
       # todos os módulos do produto na busca.
       if module == 'Framework':
@@ -524,7 +545,7 @@ def main():
       # Removemos alguns caracteres da pergunta do usuário
       question = re.sub('º|ª|°|˚|-', '', question)
       # Criamos uma variável que contém uma cópia da pergunta do usuário onde removemos as barras
-      filtered_sentence = question.replace('/', ' ')
+      filtered_sentence = question.replace('/', ' ').replace('"', '')
 
       # Removemos os caracteres especiais da sentença filtrada
       filtered_sentence = unidecode(filtered_sentence)
@@ -543,8 +564,8 @@ def main():
 
       # Definimos 3 thresholds em ordem decrescente.
       thresholds = [65, 55, 45]
-      if 'rejeicao' in filtered_sentence:
-        thresholds = [85]
+      #if 'rejeicao' in filtered_sentence:
+      #  thresholds = [85]
       # Se a pergunta do usuário apenas tiver duas palavras usamos apenas o maior threshold.
       #if len(word_tokens) == 2:
       #  thresholds = [thresholds[-1]]
@@ -597,7 +618,7 @@ def main():
         #return textResponse(f'{answer}', jumpTo='Criar ticket de log', customLog=custom_log)
 
         # Obtemos a resposta, o melhor match e suas respectivas informações
-        answer, san_answer, best_match, parms = get_results(login, all_results, k=3)
+        answer, san_answer, best_match, parms = get_results(login, all_results, segment=segment, channel=channel, k=3)
 
         parameters.update(parms)
         custom_log = get_custom_log(parameters)
@@ -635,7 +656,7 @@ def main():
             aux.append(r)
 
         results = aux
-        answer, san_answer, best_match, parms = get_results(login, results, k=3)
+        answer, san_answer, best_match, parms = get_results(login, results, segment=segment, channel=channel, k=3)
 
       if best_match:
         parameters.update(parms)
@@ -672,7 +693,6 @@ def main():
       # de transbordo ou abertura de ticket
       else:
         answer += f"Tentativas excedidas: attempts={attempts}. Redirencionando ao fluxo de abertura de ticket.\n"
-        #return textResponse(f'{answer}', jumpTo='Criar ticket de log', customLog=custom_log)
 
         # Como nenhum artigo foi encontrado definimos automaticamente o feedback como negativo
         parameters['custom_feedback'] = 'no'
