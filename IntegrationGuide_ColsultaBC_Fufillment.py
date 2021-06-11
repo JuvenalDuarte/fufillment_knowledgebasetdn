@@ -328,7 +328,9 @@ def get_results(login, results, channel, k=3, segment=None):
     parameters['last_url'] = url_best_match
     parameters['last_answer'] = sanitized_answer
     parameters['module'] = best_match.get('module')
-    parameters['source'] = best_match.get('source')
+    #parameters['source'] = best_match.get('source')
+    parameters['source'] = 'modelo'
+    parameters['analytics'] = False
 
     for i, url in enumerate(url_list):
         if url:
@@ -573,7 +575,13 @@ def main():
       # Enviamos a pergunta do usuário para o modelo com seus respectivos produto, módulo, bigrams e trigrams
       # Nesta etapa usamos o menor threshold para obter o maior número de matches.
       results_kcs, total_matches_kcs = get_model_answer(filtered_sentence, product, module, tags, thresholds[-1], db="KCS")
-      results_tdn, total_matches_tdn = get_model_answer(filtered_sentence, product, module, tags, thresholds[-1], db="TDN")
+
+      # TDN habilitado apenas para plataformas por enquanto
+      if segment.lower() == 'plataformas':
+        results_tdn, total_matches_tdn = get_model_answer(filtered_sentence, product, module, tags, thresholds[-1], db="TDN")
+      else:
+        results_tdn = []
+        total_matches_tdn = 0
 
       # Enviamos a pergunta do usuário para o modelo mas agora com os módulos da família do módulo selecionado.
       # Nesta etapa usamos o menor threshold para obter o maior número de matches.
@@ -603,7 +611,7 @@ def main():
         if not tmp_results_kcs:
             tmp_results_kcs = [result for result in related_modules_results if result.get('score') >= threshold/100]
             for item in tmp_results_kcs: item.update({"source":"kcs"})
-            answer += f"{len(tmp_results_kcs)} adicionados pela pesquisa em módulos relacionados.\n"
+            #answer += f"{len(tmp_results_kcs)} adicionados pela pesquisa em módulos relacionados.\n"
 
         # Coloca todos os artigos acima do threshold em uma mesma lista
         all_results = tmp_results_kcs + tmp_results_tdn
@@ -615,7 +623,6 @@ def main():
         all_results.sort(key=lambda x: x.get('score'), reverse=True)
 
         answer += f"Total de {len(all_results)} artigos resultantes.\n"
-        #return textResponse(f'{answer}', jumpTo='Criar ticket de log', customLog=custom_log)
 
         # Obtemos a resposta, o melhor match e suas respectivas informações
         answer, san_answer, best_match, parms = get_results(login, all_results, segment=segment, channel=channel, k=3)
@@ -626,15 +633,11 @@ def main():
         # Retornamos a resposta para o usuário
         return textResponse(f'{answer}', jumpTo='Criar ticket de log', customLog=custom_log)
 
-      answer += f"Nenhum threshold satisfeito, redirecionando para elastic search.\n"
-
       # Caso nenhuma resposta satisfaça os thresholds.Fallback: Elasticsearch
       best_match = None
       params = {'text': filtered_sentence, 'module': [module], 'product': product}
       query = Query(login, get_aggs=True, only_hits=False)
       response = query.named(named_query = 'get_document_that_contains', json_query=params).go().results
-
-      answer += f"elasticsearch.checkpoint=1.\n"
 
       results = []
       if response and response[0].get('hits'):
@@ -645,8 +648,6 @@ def main():
         if response and response[0].get('hits'):
           results = sorted(response[0].get('hits'), key=operator.itemgetter('_score'), reverse=True)
 
-      answer += f"elasticsearch.checkpoint=2. len(results) = {len(results)}. \n"
-      
       if results:
         results = [result.get('mdmGoldenFieldAndValues') for result in results if result.get('_score') > 18]
         aux = []
@@ -660,11 +661,10 @@ def main():
 
       if best_match:
         parameters.update(parms)
+        parameters['source'] = 'elasticsearch'
         custom_log = get_custom_log(parameters)
         return textResponse(f'{answer}', jumpTo='Criar ticket de log', customLog=custom_log)
 
-      answer += f"elasticsearch.checkpoint=4.\n"
-    
       # Caso nenhum artigo tenha sido retornado pela busca do usuário nós damos mais 2 tentativas
       # para eles tentarem refazer a consulta usando outras palavras antes de enviá-los para o fluxo
       # de transbordo ou abertura de ticket.
@@ -681,9 +681,6 @@ def main():
       parameters['body'] = body
       parameters['attempts'] = attempts
       parameters['max_attempts'] = False
-
-      answer += f"Redirecionando para nova tentativa. attempts={attempts}. \n"
-
       # Caso ainda não tenham sido feitas 3 tentativas pedimos para os usuários
       # tentarem refazer a consulta usando outras palavras
       if attempts < 3:
@@ -692,8 +689,6 @@ def main():
       # Caso as 3 tentativas já tenham sido feitas levamos os usuários para o fluxo
       # de transbordo ou abertura de ticket
       else:
-        answer += f"Tentativas excedidas: attempts={attempts}. Redirencionando ao fluxo de abertura de ticket.\n"
-
         # Como nenhum artigo foi encontrado definimos automaticamente o feedback como negativo
         parameters['custom_feedback'] = 'no'
         # Analisamos se o usuário é um curador que pode abrir tickets
