@@ -77,9 +77,16 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
     # Pega o conteúdo dos atributos esperados, dependo da fonte, através do
     # dicionário de mappings
     d = field_mapping
+
+    # Inicializando variáveis pra evitar que o processo quebre caso a lista de results seja vazia
+    sanitized_answer = answer = ""
     
     # Caso o canal não seja o portal não podemos abrir uma nova aba no navegador.
     target = '_blank' if channel != 'portal' else '_placeholder'
+
+    header = best_match.get(d[best_match.get('source')]["header"])
+    header_ref = best_match.get(d[best_match.get('source')]["header_ref"])
+    labels = best_match.get(d[best_match.get('source')]["tags"])
 
     # Tratando resultado principal: best match, maior score
     if not pageviews:
@@ -87,14 +94,11 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
         # Os atributos usados dependem da fonte do artigo. Primeiro recuperamos esta fonte pelo atributo 
         # 'source' no artigo, em seguinda a usamos no dicionário field_mapping para localizar o nome da
         # coluna correspondente em cada uma das fontes
-        header = best_match.get(d[best_match.get('source')]["header"])
-        header_ref = best_match.get(d[best_match.get('source')]["header_ref"])
         content = best_match.get(d[best_match.get('source')]["content"])
         content = resize_images(content)
         content = resize_videos(content)
         content = open_url_in_new_tab(content)
         sancontent = best_match.get(d[best_match.get('source')]["sanitized_content"])
-        labels = best_match.get(d[best_match.get('source')]["tags"])
 
         # Adicionamos ao início da resposta o título do artigo de melhor match com sua respectiva URL de acesso
         answer = f'<br><b><a target="{target}" rel="noopener noreferrer" href="{header_ref}" style="text-decoration: underline"><strong>{header}</strong></a></b><br>' + content
@@ -116,8 +120,6 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
                 answer += f'<br>Selecione a versão para baixar pacote de atualização:' + ", ".join(patch_links)
         
         sanitized_answer = sancontent + f'\n\nURL: {header_ref}'
-    else:
-        header = header_ref = labels = None
 
     # Artigos secundários: Os demais artigos são exibidos de maneira resumida, só título e url, sem detalhes.
     url_list = []
@@ -177,6 +179,7 @@ def orderby_page_views(login, article_results, k=5):
     article_results_ranked = []
     for i, pageview in enumerate(page_views_results):        
         document_result = [result for result in article_results if str(result.get('id')) == pageview.get('documentid')]
+        if not document_result: continue
         document_result = document_result[0]
         document_result.update({"source":"kcs"})
         article_results_ranked.append(document_result)
@@ -190,7 +193,7 @@ def orderby_page_views(login, article_results, k=5):
     return article_results_ranked
 
 
-def top_page_views(login, module, k):
+def top_page_views(login, module, k=5):
     # Criamos a resposta para o usuário usando métricas de acesso dos artigos vindas
     # do Google Analytics
     from pycarol.query import Query
@@ -253,7 +256,8 @@ def get_model_answer(sentence, product, module, tags, threshold, db="KCS"):
 
         data['k'] = 10
         data['filters'] = filters
-        data['response_columns'] = ['id', 'html_url', 'solucao', "patch_version", "patch_url", "summary", "situacao_requisicao"]
+        data['threshold_custom'] = {'labels': 90, 'all': threshold}
+        data['response_columns'] = ['id', 'html_url', 'solucao', "patch_version", "patch_url", "summary", "situacao_requisicao", "modulo"]
         api_url = 'https://sentencesimilarity-tdnknowledgebase.apps.carol.ai/query'
        
     # Enviamos a consulta para o modelo
@@ -298,6 +302,7 @@ def get_results(login, results, channel, k=3, segment=None):
                               "content": "solution",
                               "sanitized_content":"sanitized_solution",
                               "tags": "tags",
+                              "module": "module",
                               "section":"section",
                               "section_url":"section_html_url"},
 
@@ -306,6 +311,7 @@ def get_results(login, results, channel, k=3, segment=None):
                               "content": "solution",
                               "sanitized_content":"sanitizedsolution",
                               "tags": "labels",
+                              "module": "module",
                               "section":"section",
                               "section_url":"sectionurl"},
                      
@@ -314,6 +320,7 @@ def get_results(login, results, channel, k=3, segment=None):
                               "content": "situacao_requisicao",
                               "sanitized_content": "situacao_requisicao",
                               "tags": "labels",
+                              "module": "modulo",
                               "section":"",
                               "section_url":""}}
 
@@ -322,15 +329,17 @@ def get_results(login, results, channel, k=3, segment=None):
 
     # Guardando os parâmetros para debug
     parameters = {}
-    parameters['labels'] = labels
-    parameters['section_id'] = best_match.get('section_id')
+    parameters['labels'] = labels if labels else []
     parameters['title'] = title_best_match
     parameters['last_url'] = url_best_match
     parameters['last_answer'] = sanitized_answer
-    parameters['module'] = best_match.get('module')
-    #parameters['source'] = best_match.get('source')
+    #parameters['module'] = best_match.get(field_mapping[best_match.get('source')]["module"])
     parameters['source'] = 'modelo'
     parameters['analytics'] = False
+
+    # Adicionada uma section default para não quebrar o fluxo quando a section não esta disponível
+    parameters['section_id'] = best_match.get('section_id') if best_match.get('section_id') else '1500001536781'
+    parameters['module'] = best_match.get('module') if best_match.get('module') else 'Gestão de Pessoas (SIGAGPE)'
 
     for i, url in enumerate(url_list):
         if url:
@@ -622,10 +631,14 @@ def main():
         # Ordena a lista pela score
         all_results.sort(key=lambda x: x.get('score'), reverse=True)
 
-        answer += f"Total de {len(all_results)} artigos resultantes.\n"
+        #answer += f"Total de {len(all_results)} artigos resultantes.\n"
 
         # Obtemos a resposta, o melhor match e suas respectivas informações
         answer, san_answer, best_match, parms = get_results(login, all_results, segment=segment, channel=channel, k=3)
+
+        #answer += ">> DEBUG SECTION: parameters \n\n"
+        #for kys in parms.keys():
+        #  answer += f"    {kys} = {parms[kys]}\n"
 
         parameters.update(parms)
         custom_log = get_custom_log(parameters)
