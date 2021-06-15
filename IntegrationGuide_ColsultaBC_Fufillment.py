@@ -258,7 +258,8 @@ def get_model_answer(sentence, product, module, tags, threshold, db="KCS"):
         data['filters'] = filters
         data['threshold_custom'] = {'labels': 90, 'all': threshold}
         data['response_columns'] = ['id', 'html_url', 'solucao', "patch_version", "patch_url", "summary", "situacao_requisicao", "modulo"]
-        api_url = 'https://sentencesimilarity-tdnknowledgebase.apps.carol.ai/query'
+        #api_url = 'https://sentencesimilarity-tdnknowledgebase.apps.carol.ai/query'
+        api_url = "https://protheusassistant-tdnknowledgebaseprd.apps.carol.ai/query"
        
     # Enviamos a consulta para o modelo
     response = requests.post(url=api_url, json=data)
