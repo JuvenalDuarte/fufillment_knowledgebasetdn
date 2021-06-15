@@ -88,6 +88,13 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
     header_ref = best_match.get(d[best_match.get('source')]["header_ref"])
     labels = best_match.get(d[best_match.get('source')]["tags"])
 
+    # Garante as tags são uma lista (evita problemas no fluxo de abertura de ticket)
+    if not isinstance(labels, list):
+        try:
+            labels = json.loads(str(labels))
+        except:
+            labels = list()
+
     # Tratando resultado principal: best match, maior score
     if not pageviews:
 
