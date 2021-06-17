@@ -229,7 +229,7 @@ def top_page_views(login, module, k=5):
     return best_match, article_results_ranked
 
 
-def get_model_answer(sentence, product, module, tags, threshold, db="KCS"):
+def get_model_answer(sentence, product, module, threshold, homolog, db="KCS"):
     # Fazemos a consulta na API do modelo
     import requests
 
@@ -247,15 +247,15 @@ def get_model_answer(sentence, product, module, tags, threshold, db="KCS"):
         # Caso haja um módulo o adicionamos aos filtros da consulta
         if module:
             filters.append({'filter_field': 'module', 'filter_value': module})
-        # Adicionamos os bigrams e tigrams aos filtros da consulta
-        #filters.append({'filter_field': 'tags', 'filter_value': tags})
 
         data['k'] = 30
         data['filters'] = filters
-        data['threshold_custom'] = {'tags': 90}
+        data['threshold_custom'] = {'tags': 80}
         data['response_columns'] = ['id', 'sentence', 'title', 'section_id', 'html_url', 'solution', 'sanitized_solution', 'tags', 'section_html_url', 'module']
-        #api_url = 'https://protheusassistant-searchsupportdocs.apps.carol.ai/query'
-        api_url = 'https://protheusassistant-searchdocshomolog.apps.carol.ai/query'
+        if not homolog:
+          api_url = 'https://protheusassistant-searchsupportdocs.apps.carol.ai/query'
+        else:
+          api_url = 'https://protheusassistant-searchdocshomolog.apps.carol.ai/query'
 
     elif db == "TDN":
         if module:
@@ -263,7 +263,7 @@ def get_model_answer(sentence, product, module, tags, threshold, db="KCS"):
 
         data['k'] = 10
         data['filters'] = filters
-        data['threshold_custom'] = {'labels': 90, 'all': threshold}
+        data['threshold_custom'] = {'labels': 80, 'all': threshold}
         data['response_columns'] = ['id', 'html_url', 'solucao', "patch_version", "patch_url", "summary", "situacao_requisicao", "modulo"]
         #api_url = 'https://sentencesimilarity-tdnknowledgebase.apps.carol.ai/query'
         api_url = "https://protheusassistant-tdnknowledgebaseprd.apps.carol.ai/query"
@@ -346,7 +346,7 @@ def get_results(login, results, channel, k=3, segment=None):
     parameters['analytics'] = False
 
     # Adicionada uma section default para não quebrar o fluxo quando a section não esta disponível
-    parameters['section_id'] = best_match.get('section_id') if best_match.get('section_id') else '1500001536781'
+    parameters['section_id'] = best_match.get('section_id') if best_match.get('section_id') else '360001597311'
     parameters['module'] = best_match.get('module') if best_match.get('module') else 'Gestão de Pessoas (SIGAGPE)'
 
     for i, url in enumerate(url_list):
@@ -539,7 +539,7 @@ def main():
 
       # TODO: Família de módulos
       related_modules = []
-      if segment.lower() == 'plataformas': # and not homolog:
+      if segment.lower() == 'plataformas' or (segment.lower() == 'supply' and module == 'Documentos Fiscais Eletrônicos (DFE)'):
         params = {'module': module, 'segment': segment}
         related_modules = query.named(named_query = 'get_related_modules', json_query=params).go().results
         if related_modules:
@@ -556,7 +556,7 @@ def main():
           
       # Se o módulo for do produto Framework (Linha RM) ou Framework (Linha Datasul) usar
       # todos os módulos do produto na busca.
-      if module == 'Framework':
+      if module == 'Framework' or module == 'Framework e Tecnologia':
         module = None
 
       # Salvamos a pergunta do usuário nos parâmetros para usar esta informações em outro nó.  
@@ -568,34 +568,22 @@ def main():
 
       # Removemos os caracteres especiais da sentença filtrada
       filtered_sentence = unidecode(filtered_sentence)
-
-      # Criamos bigrams e trigrams a partir da pergunta do usuário para
-      # filtrarmos os artigos baseando-nos nas tags
-      unigrams = remove_punctuation(filtered_sentence.lower()).split()
-      bigrams = get_n_grams(filtered_sentence, N=2)
-      trigrams = get_n_grams(filtered_sentence, N=3)
-      tags = copy.deepcopy(unigrams)
-      tags.extend(bigrams)
-      tags.extend(trigrams)
-      del unigrams
-      del bigrams
-      del trigrams
+      filtered_sentence = remove_punctuation(filtered_sentence)
 
       # Definimos 3 thresholds em ordem decrescente.
-      thresholds = [65, 55, 45]
-      #if 'rejeicao' in filtered_sentence:
-      #  thresholds = [85]
-      # Se a pergunta do usuário apenas tiver duas palavras usamos apenas o maior threshold.
-      #if len(word_tokens) == 2:
-      #  thresholds = [thresholds[-1]]
+      if segment.lower() == 'plataformas':
+        thresholds = [75, 65, 55]
+      else:
+        thresholds = [65, 55, 45]
 
       # Enviamos a pergunta do usuário para o modelo com seus respectivos produto, módulo, bigrams e trigrams
       # Nesta etapa usamos o menor threshold para obter o maior número de matches.
-      results_kcs, total_matches_kcs = get_model_answer(filtered_sentence, product, module, tags, thresholds[-1], db="KCS")
+      results_kcs, total_matches_kcs = get_model_answer(filtered_sentence, product, module, thresholds[-1], homolog, db="KCS")
 
       # TDN habilitado apenas para plataformas por enquanto
-      if segment.lower() == 'plataformas':
-        results_tdn, total_matches_tdn = get_model_answer(filtered_sentence, product, module, tags, thresholds[-1], db="TDN")
+      tdn = True
+      if module == 'Gestão de Pessoas (SIGAGPE)' and tdn:
+        results_tdn, total_matches_tdn = get_model_answer(filtered_sentence, product, module, thresholds[-1], homolog, db="TDN")
       else:
         results_tdn = []
         total_matches_tdn = 0
@@ -604,7 +592,7 @@ def main():
       # Nesta etapa usamos o menor threshold para obter o maior número de matches.
       related_modules_results = []
       if related_modules:
-        related_modules_results, related_modules_total_matches = get_model_answer(filtered_sentence, related_products, related_modules, tags, thresholds[-1], db="KCS")
+        related_modules_results, related_modules_total_matches = get_model_answer(filtered_sentence, related_products, related_modules, thresholds[-1], homolog, db="KCS")
       
       # Iteramos a lista de threshold, de forma a irmos diminuindo o threshold
       # até obtermos uma resposta
