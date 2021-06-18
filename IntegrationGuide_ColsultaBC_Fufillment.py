@@ -113,15 +113,21 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
         # Caso o artigo com maior score seja do TDN adicionamos o link para o patch, caso disponível
         if best_match.get('source') == "tdn":
 
-            # Caso o atributo esteja preenchido
-            if best_match.get('patch_url'):
+            try:
                 patch = best_match.get('patch_url')
                 patches_d = json.loads(patch)
-                patch_links = []
+            except:
+                patches_d = {}
+            
+            patch_links = []
+            pversions = patches_d.keys()
+
+            # Caso o atributo esteja preenchido corretamente exibe os links para download, do contrário apresenta somente o artigo
+            if len(pversions) > 0:
 
                 # Adicionamos o link para cada uma das versões disponíveis.
-                for kv in patches_d.keys():
-                    v = "Todas" if (kv == "None" or kv == "null" or kv is None) else kv
+                for kv in pversions:
+                    v = "Todas" if (str(kv).lower() in ["none", "null", "nan", "", " "]) else kv
                     patch_links.append(f'<a target="{target}" rel="noopener noreferrer" href="{patches_d[kv]}" style="text-decoration: underline">{v}</a>')
 
                 answer += f'<br>Selecione a versão para baixar pacote de atualização:' + ", ".join(patch_links)
