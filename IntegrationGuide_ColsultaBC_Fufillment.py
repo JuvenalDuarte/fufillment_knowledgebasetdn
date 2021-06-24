@@ -539,7 +539,7 @@ def main():
       # Se o usuário enviar como pergunta exatamente a mesma sentença que ele enviou para informar o módulo
       # nós retornamos os 5 artigos mais consultados daquele módulo baseado nas métricas do Google Analytics.
       if module_original and question.lower() == module_original.lower():
-        best_match, pv_results = top_page_views(login, module_original, k)
+        best_match, pv_results = top_page_views(login, module_original)
         for item in pv_results: item.update({"source":"elasticsearch"})
 
         # Obtemos a resposta, o melhor match e suas respectivas informações
