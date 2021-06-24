@@ -141,13 +141,14 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
             results.pop(results.index(best_match))
             answer = answer + '<br><br>Aqui tenho outros artigos que podem ajudar:'
             sanitized_answer = sanitized_answer + '\n\n\nAqui tenho outros artigos que podem ajudar:'
+            tmp_results = results[:k]
 
         else:
             answer = 'Sua busca foi abrangente e retornou muitos resultados.'
             answer += f'<br>Aqui estão os {len(results)} artigos relacionados à sua pergunta que foram mais consultados pelos nossos clientes.'
             sanitized_answer = answer
+            tmp_results = results[:5]
 
-        tmp_results = results[:k]
 
         for r in tmp_results:
             detail_header = r.get(d[r.get('source')]["header"])
@@ -304,6 +305,8 @@ def get_results(login, results, channel, k=3, segment=None):
     if (len(results) > 10) and (segment == 'Plataformas'):
         results = orderby_page_views(login, article_results=results)
         pv=True
+        # Para o caso de page views o cliente quer ver os top 5
+        k = 5
 
     # Consideramos o melhor match o primeiro item da lista pois possui maior score
     best_match = results[0]
@@ -543,7 +546,7 @@ def main():
         for item in pv_results: item.update({"source":"elasticsearch"})
 
         # Obtemos a resposta, o melhor match e suas respectivas informações
-        answer, san_answer, best_match, parms = get_results(login, pv_results, segment=segment, channel=channel, k=3)
+        answer, san_answer, best_match, parms = get_results(login, pv_results, segment=segment, channel=channel, k=5)
         parameters.update(parms)
         custom_log = get_custom_log(parameters)
 
