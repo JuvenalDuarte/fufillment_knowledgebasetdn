@@ -349,7 +349,7 @@ def get_results(login, results, channel, k=3, segment=None):
     parameters['last_answer'] = sanitized_answer
     #parameters['module'] = best_match.get(field_mapping[best_match.get('source')]["module"])
     parameters['source'] = 'modelo'
-    parameters['analytics'] = False
+    parameters['analytics'] = pv
 
     # Adicionada uma section default para não quebrar o fluxo quando a section não esta disponível
     parameters['section_id'] = best_match.get('section_id') if best_match.get('section_id') else '360001597311'
@@ -459,6 +459,8 @@ def main():
     # Frases para mapear intenções relacionadas com consulta de tickets
     ticket_questions = ['consultar chamado', 'consultar ticket', 'consultar solicitação']
 
+    eventos_suporte_protheus_questions = ['Onde encontrar os eventos do suporte?', 'Onde posso encontrar as inovações do suporte?', 'inovações do suporte', 'eventos do suporte', 'encontrar eventos do suporte', 'encontrar inovações do suporte', 'encontrar inovação do suporte', 'encontrar evento do suporte', 'evento suporte']
+
     # Pegamos dos parâmetros a pergunta do usuário, o módulo e o produto selecionados.
     question = parameters.get('question')
     module = parameters.get('module')
@@ -503,6 +505,10 @@ def main():
     matched_ticket_questions = [ticket_question for ticket_question in ticket_questions if fuzz.ratio(question_tmp, ticket_question) >= 90]
     if re.search('[0-9]{7,}', question_tmp) or matched_ticket_questions:
       return textResponse('Entendi que você está querendo consultar uma solicitação. Vou te levar para o menu de seleção e você poderá selecionar a opção de "Consultar solicitação".', jumpTo='Identificar assunto')
+
+    matched_eventos_protheus_questions = [eventos_protheus_question for eventos_protheus_question in eventos_suporte_protheus_questions if fuzz.ratio(question_tmp, eventos_protheus_question) >= 90]
+    if matched_eventos_protheus_questions:
+      return textResponse('Você pode encontrar informações sobre nossos eventos nas páginas:<br>https://suporteprotheusinformaprime.totvs.com/ <br>https://suporteprotheusinforma.totvs.com/', jumpTo='Consulta BC', customLog=custom_log)
 
     # Só enviamos a pergunta do usuário para o modelo caso o módulo e o produto tenham sido informados.  
     if question and module and product:
@@ -557,6 +563,12 @@ def main():
             related_products = list({related_product.get('product').strip() for related_product in related_products})
           else:
             related_products = product
+          if homolog and module == 'Estoque e Custos (SIGAEST)':
+            related_modules.append('Planejamento e Controle da Produção (SIGAPCP)')
+            if isinstance(related_products, list):
+              related_products.append('TOTVS Manufatura (Linha Protheus)')
+            elif isinstance(related_products, str):
+              related_products = [product, 'TOTVS Manufatura (Linha Protheus)']
         else:
           related_modules = []
           
@@ -588,7 +600,7 @@ def main():
 
       # TDN habilitado apenas para plataformas por enquanto
       tdn = True
-      if module == 'Gestão de Pessoas (SIGAGPE)' and tdn:
+      if module == 'Gestão de Pessoas (SIGAGPE)' and homolog:
         results_tdn, total_matches_tdn = get_model_answer(filtered_sentence, product, module, thresholds[-1], homolog, db="TDN")
       else:
         results_tdn = []
