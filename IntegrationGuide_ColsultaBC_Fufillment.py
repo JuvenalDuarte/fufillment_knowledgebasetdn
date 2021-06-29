@@ -500,6 +500,8 @@ def main():
     if not email:
       email = parameters.get('email')
 
+    username = parameters.get('username')
+
     # Cria os custom logs.
     custom_log = get_custom_log(parameters)
     
@@ -526,6 +528,13 @@ def main():
     matched_eventos_protheus_questions = [eventos_protheus_question for eventos_protheus_question in eventos_suporte_protheus_questions if fuzz.ratio(question_tmp, eventos_protheus_question) >= 90]
     if matched_eventos_protheus_questions:
       return textResponse('Você pode encontrar informações sobre nossos eventos nas páginas:<br>https://suporteprotheusinformaprime.totvs.com/ <br>https://suporteprotheusinforma.totvs.com/', jumpTo='Consulta BC', customLog=custom_log)
+
+    if 'issue' in question_tmp:
+      if username:
+        name = f'{username}, i'
+      else:
+        name = 'I'
+      return textResponse('{name}nfelizmente não sei sobre as atividades do desenvolvimento, contate o PO deste produto.', jumpTo='Consulta BC', customLog=custom_log)
 
     # Só enviamos a pergunta do usuário para o modelo caso o módulo e o produto tenham sido informados.  
     if question and module and product:
@@ -616,7 +625,6 @@ def main():
       results_kcs, total_matches_kcs = get_model_answer(filtered_sentence, product, module, thresholds[-1], homolog, db="KCS")
 
       # TDN habilitado apenas para plataformas por enquanto
-      tdn = True
       if module == 'Gestão de Pessoas (SIGAGPE)' and homolog:
         results_tdn, total_matches_tdn = get_model_answer(filtered_sentence, product, module, thresholds[-1], homolog, db="TDN")
       else:
