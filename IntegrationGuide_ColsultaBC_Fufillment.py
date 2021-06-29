@@ -83,8 +83,13 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
     
     # Caso o canal não seja o portal não podemos abrir uma nova aba no navegador.
     target = '_blank' if channel != 'portal' else '_placeholder'
-
     header = best_match.get(d[best_match.get('source')]["header"])
+
+    # Para o TDN quando não existe uma issue correspondente o atributo summary é vazio.
+    # Nesses casos será usado o título do artigo.
+    if header == "":
+        header = best_match.get(d[best_match.get('source')]["header2"])
+
     header_ref = best_match.get(d[best_match.get('source')]["header_ref"])
     labels = best_match.get(d[best_match.get('source')]["tags"])
 
@@ -152,6 +157,12 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
 
         for r in tmp_results:
             detail_header = r.get(d[r.get('source')]["header"])
+
+            # Para o TDN quando não existe uma issue correspondente o atributo summary é vazio.
+            # Nesses casos será usado o título do artigo.
+            if detail_header == "":
+                detail_header = r.get(d[r.get('source')]["header2"])
+
             detail_header_ref = r.get(d[r.get('source')]["header_ref"])
             url_list.append(detail_header_ref)
 
@@ -315,6 +326,7 @@ def get_results(login, results, channel, k=3, segment=None):
     results = results[:k]
 
     field_mapping = {"kcs" : {"header": "title",
+                              "header2": "title",
                               "header_ref": "html_url",
                               "content": "solution",
                               "sanitized_content":"sanitized_solution",
@@ -324,6 +336,7 @@ def get_results(login, results, channel, k=3, segment=None):
                               "section_url":"section_html_url"},
 
                      "elasticsearch" : {"header": "mdmtitle",
+                              "header2": "mdmtitle", 
                               "header_ref": "mdmurl",
                               "content": "solution",
                               "sanitized_content":"sanitizedsolution",
@@ -333,6 +346,7 @@ def get_results(login, results, channel, k=3, segment=None):
                               "section_url":"sectionurl"},
                      
                      "tdn" : {"header": "summary",
+                              "header2": "title",
                               "header_ref": "html_url",
                               "content": "situacao_requisicao",
                               "sanitized_content": "situacao_requisicao",
