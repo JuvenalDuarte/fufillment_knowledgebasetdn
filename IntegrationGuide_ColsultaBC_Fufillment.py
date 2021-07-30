@@ -616,14 +616,9 @@ def main():
 
       # Salvamos a pergunta do usuário nos parâmetros para usar esta informações em outro nó.  
       parameters['last_question'] = question
-      # Removemos alguns caracteres da pergunta do usuário
-      question = re.sub('º|ª|°|˚|-', '', question)
-      # Criamos uma variável que contém uma cópia da pergunta do usuário onde removemos as barras
-      filtered_sentence = question.replace('/', ' ').replace('"', '')
 
       # Removemos os caracteres especiais da sentença filtrada
-      filtered_sentence = unidecode(filtered_sentence)
-      filtered_sentence = remove_punctuation(filtered_sentence)
+      filtered_sentence = unidecode(question)
 
       # Definimos 3 thresholds em ordem decrescente.
       if segment.lower() == 'plataformas':
