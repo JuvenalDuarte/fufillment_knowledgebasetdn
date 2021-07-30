@@ -220,7 +220,7 @@ def orderby_page_views(login, article_results, k=5):
 
 def top_page_views(login, module, k=5):
     # Criamos a resposta para o usuário usando métricas de acesso dos artigos vindas
-    # do Google Analytics
+    # do Google Analytics.
     from pycarol.query import Query
 
     query = Query(login)
@@ -313,7 +313,8 @@ def get_results(login, results, channel, k=3, segment=None):
     # ATENÇÂO: Quando temos muitos artigos os documentos TDN são descartados, pois ainda não temos
     # page views para estes artigos.
     pv=False
-    if (len(results) > 10) and (segment == 'Plataformas'):
+    higher_than_95 = [r for r in results if r.get('score') > 0.95]
+    if (len(results) > 10) and (segment == 'Plataformas') and not higher_than_95:
         results = orderby_page_views(login, article_results=results)
         pv=True
         # Para o caso de page views o cliente quer ver os top 5
@@ -440,7 +441,8 @@ def main():
             'abrir chamado',
             'abrir chamado modulo faturamento',
             'abrir chamado modulo rh',
-            'abrir chamado modulo estoque']
+            'abrir chamado modulo estoque',
+            'atendente humano']
     # Opções de respostas para quando o usuário enviar apenas uma palavra na pergunta.
     respostas_uma_palavra = ['Poderia detalhar um pouco mais sua dúvida?',
              'Me conte com mais detalhes a sua dúvida.',
@@ -476,13 +478,19 @@ def main():
     # Frases para mapear intenções relacionadas com consulta de tickets
     ticket_questions = ['consultar chamado', 'consultar ticket', 'consultar solicitação']
 
-    eventos_suporte_protheus_questions = ['Onde encontrar os eventos do suporte?', 'Onde posso encontrar as inovações do suporte?', 'inovações do suporte', 'eventos do suporte', 'encontrar eventos do suporte', 'encontrar inovações do suporte', 'encontrar inovação do suporte', 'encontrar evento do suporte', 'evento suporte']
+    eventos_suporte_protheus_questions = ['Onde encontrar os eventos do suporte?', 'Onde posso encontrar as inovações do suporte?',
+      'inovações do suporte', 'eventos do suporte', 'encontrar eventos do suporte', 'encontrar inovações do suporte',
+      'encontrar inovação do suporte', 'encontrar evento do suporte', 'evento suporte', 'Onde encontrar eventos do suporte?',
+      'Onde encontrar inovações do suporte?', 'Temos alguma página de informações do suporte?', 'Onde encontrar os comunicados do suporte?'
+]
 
     # Pegamos dos parâmetros a pergunta do usuário, o módulo e o produto selecionados.
     question = parameters.get('question')
     module = parameters.get('module')
     product = parameters.get('product')
     segment = parameters.get('segment')
+
+    debug = parameters.get('debug')
 
     parameters.pop('source', None)
 
@@ -527,7 +535,7 @@ def main():
 
     matched_eventos_protheus_questions = [eventos_protheus_question for eventos_protheus_question in eventos_suporte_protheus_questions if fuzz.ratio(question_tmp, eventos_protheus_question) >= 90]
     if matched_eventos_protheus_questions:
-      return textResponse('Você pode encontrar informações sobre nossos eventos nas páginas:<br>https://suporteprotheusinformaprime.totvs.com/ <br>https://suporteprotheusinforma.totvs.com/', jumpTo='Consulta BC', customLog=custom_log)
+      return textResponse('Você pode encontrar informações sobre nossos eventos na página:<br>https://suporteprotheusinforma.totvs.com/', jumpTo='Consulta BC', customLog=custom_log)
 
     if 'issue' in question_tmp:
       if username:
@@ -577,24 +585,27 @@ def main():
 
       # TODO: Família de módulos
       related_modules = []
-      if segment.lower() == 'plataformas' or (segment.lower() == 'supply' and module == 'Documentos Fiscais Eletrônicos (DFE)'):
+      if segment.lower() == 'plataformas' or (segment.lower() == 'supply' and module == 'Faturamento (MFT)'):
         params = {'module': module, 'segment': segment}
         related_modules = query.named(named_query = 'get_related_modules', json_query=params).go().results
         if related_modules:
           related_modules = related_modules[0].get('relatedmodules').split(',')
           related_modules = [related_module.strip() for related_module in related_modules]
-          params = {'modules': related_modules, 'segment': segment}
-          related_products = query.named(named_query = 'get_products_by_modules', json_query=params).go().results
-          if related_products:
-            related_products = list({related_product.get('product').strip() for related_product in related_products})
+          if related_modules:
+            params = {'modules': related_modules, 'segment': segment}
+            related_products = query.named(named_query = 'get_products_by_modules', json_query=params).go().results
+            if related_products:
+              related_products = list({related_product.get('product').strip() for related_product in related_products})
+            else:
+              related_products = product
+            if homolog and module == 'Estoque e Custos (SIGAEST)':
+              related_modules.append('Planejamento e Controle da Produção (SIGAPCP)')
+              if isinstance(related_products, list):
+                related_products.append('TOTVS Manufatura (Linha Protheus)')
+              elif isinstance(related_products, str):
+                related_products = [product, 'TOTVS Manufatura (Linha Protheus)']
           else:
-            related_products = product
-          if homolog and module == 'Estoque e Custos (SIGAEST)':
-            related_modules.append('Planejamento e Controle da Produção (SIGAPCP)')
-            if isinstance(related_products, list):
-              related_products.append('TOTVS Manufatura (Linha Protheus)')
-            elif isinstance(related_products, str):
-              related_products = [product, 'TOTVS Manufatura (Linha Protheus)']
+            related_modules = []
         else:
           related_modules = []
           
@@ -623,9 +634,11 @@ def main():
       # Enviamos a pergunta do usuário para o modelo com seus respectivos produto, módulo, bigrams e trigrams
       # Nesta etapa usamos o menor threshold para obter o maior número de matches.
       results_kcs, total_matches_kcs = get_model_answer(filtered_sentence, product, module, thresholds[-1], homolog, db="KCS")
+      if debug:
+        return textResponse(results_kcs)
 
       # TDN habilitado apenas para plataformas por enquanto
-      if module == 'Gestão de Pessoas (SIGAGPE)' and homolog:
+      if module in ['Gestão de Pessoas (SIGAGPE)', 'Financeiro (SIGAFIN)']:
         results_tdn, total_matches_tdn = get_model_answer(filtered_sentence, product, module, thresholds[-1], homolog, db="TDN")
       else:
         results_tdn = []
@@ -686,36 +699,7 @@ def main():
         return textResponse(f'{answer}', jumpTo='Criar ticket de log', customLog=custom_log)
 
       # Caso nenhuma resposta satisfaça os thresholds.Fallback: Elasticsearch
-      best_match = None
-      params = {'text': filtered_sentence, 'module': [module], 'product': product}
-      query = Query(login, get_aggs=True, only_hits=False)
-      response = query.named(named_query = 'get_document_that_contains', json_query=params).go().results
-
-      results = []
-      if response and response[0].get('hits'):
-        results = sorted(response[0].get('hits'), key=operator.itemgetter('_score'), reverse=True)
-      elif related_modules:
-        params = {'text': filtered_sentence, 'module': related_modules, 'product': product}
-        response = query.named(named_query = 'get_document_that_contains', json_query=params).go().results
-        if response and response[0].get('hits'):
-          results = sorted(response[0].get('hits'), key=operator.itemgetter('_score'), reverse=True)
-
-      if results:
-        results = [result.get('mdmGoldenFieldAndValues') for result in results if result.get('_score') > 18]
-        aux = []
-        for r in results:
-          if r.get('id') not in [b.get('id') for b in aux]:
-            r["source"] = "elasticsearch"
-            aux.append(r)
-
-        results = aux
-        answer, san_answer, best_match, parms = get_results(login, results, segment=segment, channel=channel, k=3)
-
-      if best_match:
-        parameters.update(parms)
-        parameters['source'] = 'elasticsearch'
-        custom_log = get_custom_log(parameters)
-        return textResponse(f'{answer}', jumpTo='Criar ticket de log', customLog=custom_log)
+      # FALLBACK
 
       # Caso nenhum artigo tenha sido retornado pela busca do usuário nós damos mais 2 tentativas
       # para eles tentarem refazer a consulta usando outras palavras antes de enviá-los para o fluxo
