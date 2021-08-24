@@ -279,12 +279,12 @@ def get_model_answer(sentence, product, module, threshold, homolog, db="KCS"):
 
     elif db == "TDN":
         if module:
-            filters = [{'filter_field': 'modulo', 'filter_value': module}]
+            filters = [{'filter_field': 'modulo_catalogo', 'filter_value': module}]
 
         data['k'] = 10
         data['filters'] = filters
         data['threshold_custom'] = {'labels': 80, 'all': threshold}
-        data['response_columns'] = ['id', 'html_url', 'solucao', "patch_version", "patch_url", "summary", "situacao_requisicao", "modulo"]
+        data['response_columns'] = ['id', 'html_url', 'solucao', "patch_version", "patch_url", "summary", "situacao_requisicao", "modulo_catalogo"]
         #api_url = 'https://sentencesimilarity-tdnknowledgebase.apps.carol.ai/query'
         api_url = "https://protheusassistant-tdnknowledgebaseprd.apps.carol.ai/query"
        
