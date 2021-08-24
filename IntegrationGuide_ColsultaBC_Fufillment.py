@@ -118,6 +118,8 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
         # Caso o artigo com maior score seja do TDN adicionamos o link para o patch, caso disponível
         if best_match.get('source') == "tdn":
 
+            best_match['module'] = best_match.get(d.get('tdn').get('module'))
+
             try:
                 patch = best_match.get('patch_url')
                 patches_d = json.loads(patch)
@@ -137,7 +139,7 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
 
                 answer += f'<br>Selecione a versão para baixar pacote de atualização:' + ", ".join(patch_links)
         
-        sanitized_answer = sancontent + f'\n\nURL: {header_ref}'
+        sanitized_answer = sancontent
 
     # Artigos secundários: Os demais artigos são exibidos de maneira resumida, só título e url, sem detalhes.
     url_list = []
@@ -314,7 +316,8 @@ def get_results(login, results, channel, k=3, segment=None):
     # page views para estes artigos.
     pv=False
     higher_than_95 = [r for r in results if r.get('score') > 0.95]
-    if (len(results) > 10) and (segment == 'Plataformas') and not higher_than_95:
+    #if (len(results) > 10) and (not higher_than_95 or len(higher_than_95) > 5):
+    if (len(results) > 10) and (segment == 'Plataformas') and (not higher_than_95 or len(higher_than_95) > 5):
         results = orderby_page_views(login, article_results=results)
         pv=True
         # Para o caso de page views o cliente quer ver os top 5
@@ -352,7 +355,7 @@ def get_results(login, results, channel, k=3, segment=None):
                               "content": "situacao_requisicao",
                               "sanitized_content": "situacao_requisicao",
                               "tags": "labels",
-                              "module": "modulo",
+                              "module": "modulo_catalogo",
                               "section":"",
                               "section_url":""}}
 
@@ -361,6 +364,8 @@ def get_results(login, results, channel, k=3, segment=None):
 
     # Guardando os parâmetros para debug
     parameters = {}
+    results_scores = [result.get('score') for result in results]
+    parameters['scores'] = results_scores
     parameters['labels'] = labels if labels else []
     parameters['title'] = title_best_match
     parameters['last_url'] = url_best_match
@@ -370,8 +375,8 @@ def get_results(login, results, channel, k=3, segment=None):
     parameters['analytics'] = pv
 
     # Adicionada uma section default para não quebrar o fluxo quando a section não esta disponível
-    parameters['section_id'] = best_match.get('section_id') if best_match.get('section_id') else '360001597311'
-    parameters['module'] = best_match.get('module') if best_match.get('module') else 'Gestão de Pessoas (SIGAGPE)'
+    parameters['section_id'] = best_match.get('section_id')
+    parameters['module'] = best_match.get('module')
 
     for i, url in enumerate(url_list):
         if url:
@@ -561,8 +566,8 @@ def main():
       login = Carol(domain='protheusassistant',
               app_name=' ',
               organization='totvs',
-              auth=ApiKeyAuth('12bb49601ef541a4b59ae86d67e5ab02'),
-              connector_id='278270a32da04d8f905590937fbb3fef')
+              auth=ApiKeyAuth('d8fe3b6b00074a8d81774551397040f4'),
+              connector_id='f9953f6645f449baaccd16ab462f9b64')
       # Criamos uma instancia da classe Query da Carol
       query = Query(login)
 
@@ -585,7 +590,7 @@ def main():
 
       # TODO: Família de módulos
       related_modules = []
-      if segment.lower() == 'plataformas' or (segment.lower() == 'supply' and module == 'Faturamento (MFT)'):
+      if segment.lower() == 'plataformas' or (segment.lower() == 'supply' and homolog):
         params = {'module': module, 'segment': segment}
         related_modules = query.named(named_query = 'get_related_modules', json_query=params).go().results
         if related_modules:
@@ -598,7 +603,7 @@ def main():
               related_products = list({related_product.get('product').strip() for related_product in related_products})
             else:
               related_products = product
-            if homolog and module == 'Estoque e Custos (SIGAEST)':
+            if module == 'Estoque e Custos (SIGAEST)':
               related_modules.append('Planejamento e Controle da Produção (SIGAPCP)')
               if isinstance(related_products, list):
                 related_products.append('TOTVS Manufatura (Linha Protheus)')
@@ -611,7 +616,11 @@ def main():
           
       # Se o módulo for do produto Framework (Linha RM) ou Framework (Linha Datasul) usar
       # todos os módulos do produto na busca.
-      if module == 'Framework' or module == 'Framework e Tecnologia':
+      if module == 'TOTVS Educacional':
+        product = ['App TOTVS EduConnect', 'Educacional']
+        module = None
+      elif module == 'Framework' or module == 'Framework e Tecnologia' or module == 'TOTVS Aprovações e Atendimento' \
+        or module == 'TOTVS Obras e Projetos' or module == 'TOTVS Gestão de Imóveis':
         module = None
 
       # Salvamos a pergunta do usuário nos parâmetros para usar esta informações em outro nó.  
@@ -625,6 +634,8 @@ def main():
         thresholds = [75, 65, 55]
       else:
         thresholds = [65, 55, 45]
+        if homolog:
+          thresholds = [70, 60, 50]
 
       # Enviamos a pergunta do usuário para o modelo com seus respectivos produto, módulo, bigrams e trigrams
       # Nesta etapa usamos o menor threshold para obter o maior número de matches.
@@ -633,7 +644,7 @@ def main():
         return textResponse(results_kcs)
 
       # TDN habilitado apenas para plataformas por enquanto
-      if module in ['Gestão de Pessoas (SIGAGPE)', 'Financeiro (SIGAFIN)']:
+      if module in ['Gestão de Pessoas (SIGAGPE)', 'Financeiro (SIGAFIN)', 'Estoque e Custos (SIGAEST)']:
         results_tdn, total_matches_tdn = get_model_answer(filtered_sentence, product, module, thresholds[-1], homolog, db="TDN")
       else:
         results_tdn = []
@@ -683,9 +694,13 @@ def main():
         # Obtemos a resposta, o melhor match e suas respectivas informações
         answer, san_answer, best_match, parms = get_results(login, all_results, segment=segment, channel=channel, k=3)
 
-        #answer += ">> DEBUG SECTION: parameters \n\n"
-        #for kys in parms.keys():
-        #  answer += f"    {kys} = {parms[kys]}\n"
+        best_match_module = best_match.get('module')
+        if module and best_match_module != module:
+          if username:
+            name = f'{username}, e'
+          else:
+            name = 'E'
+          answer = f'{name}ncontrei alguma coisa no módulo {best_match_module} que pode te ajudar.<br><br>' + answer
 
         parameters.update(parms)
         custom_log = get_custom_log(parameters)
