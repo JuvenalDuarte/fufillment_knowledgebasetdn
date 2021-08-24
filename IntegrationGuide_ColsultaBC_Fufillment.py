@@ -644,7 +644,33 @@ def main():
         return textResponse(results_kcs)
 
       # TDN habilitado apenas para plataformas por enquanto
-      if module in ['Gestão de Pessoas (SIGAGPE)', 'Financeiro (SIGAFIN)', 'Estoque e Custos (SIGAEST)']:
+      tdn_prd =  ['Gestão de Pessoas (SIGAGPE)', 'Financeiro (SIGAFIN)']
+      tdn_hml =  ['Estoque e Custos (SIGAEST)',
+                  'Faturamento (SIGAFAT)',
+                  'Automação Fiscal',
+                  'Arquivos Magnéticos (SIGAFIS)',
+                  'Contabilidade Gerencial (SIGACTB)',
+                  'Ponto Eletrônico (SIGAPON)',
+                  'Medicina e Segurança do Trabalho (SIGAMDT)',
+                  'Terceirização (SIGATEC)',
+                  'Ativo Fixo (SIGAATF)',
+                  'Gestão de Transporte de Passageiros (SIGAGTP)',
+                  'Easy Export Control (SIGAEEC)',
+                  'Pré Faturamento de Serviços (SIGAPFS)',
+                  'Gestão de Projetos (SIGAPMS)',
+                  'Call Center (SIGATMK)',
+                  'Compras (SIGACOM)',
+                  'Easy Import Control (SIGAEIC)',
+                  'Customer Relationship Management (SIGACRM)',
+                  'Customizações (ADVPL)',
+                  'Treinamento (SIGATRM)',
+                  'Recrutamento e Seleção de Pessoas (SIGARSP)',
+                  'Avaliação e Pesquisa de Desempenho (SIGAAPD)',
+                  'Portal CP Human',
+                  'Gestão de Contratos (SIGAGCT)',
+                  'Departamentos (SIGAJURI)']
+
+      if module in (tdn_hml + tdn_prd):
         results_tdn, total_matches_tdn = get_model_answer(filtered_sentence, product, module, thresholds[-1], homolog, db="TDN")
       else:
         results_tdn = []
