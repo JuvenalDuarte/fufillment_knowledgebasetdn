@@ -590,30 +590,23 @@ def main():
 
       # TODO: Família de módulos
       related_modules = []
+      related_products = []
       if segment.lower() == 'plataformas' or (segment.lower() == 'supply' and homolog):
         params = {'module': module, 'segment': segment}
-        related_modules = query.named(named_query = 'get_related_modules', json_query=params).go().results
-        if related_modules:
-          related_modules = related_modules[0].get('relatedmodules').split(',')
-          related_modules = [related_module.strip() for related_module in related_modules]
-          if related_modules:
+        query = Query(login, get_aggs=True, only_hits=False)
+        response = query.named(named_query = 'get_related_modules', json_query=params).go().results
+        if response and response[0].get('hits'):
+          related_modules = [hit.get('module').strip() for hit in response[0].get('hits')[0].get('mdmGoldenFieldAndValues').get('related_modules') if hit.get('module')]
+          segments = {hit.get('segment').strip() for hit in response[0].get('hits')[0].get('mdmGoldenFieldAndValues').get('related_modules') if hit.get('segment')}
+          segments = list(segments)
+          query = Query(login)
+          for segment in segments:
+            segment_modules = [hit.get('module').strip() for hit in response[0].get('hits')[0].get('mdmGoldenFieldAndValues').get('related_modules') if hit.get('module') and hit.get('segment') == segment]
             params = {'modules': related_modules, 'segment': segment}
-            related_products = query.named(named_query = 'get_products_by_modules', json_query=params).go().results
-            if related_products:
-              related_products = list({related_product.get('product').strip() for related_product in related_products})
-            else:
-              related_products = product
-            if module == 'Estoque e Custos (SIGAEST)':
-              related_modules.append('Planejamento e Controle da Produção (SIGAPCP)')
-              if isinstance(related_products, list):
-                related_products.append('TOTVS Manufatura (Linha Protheus)')
-              elif isinstance(related_products, str):
-                related_products = [product, 'TOTVS Manufatura (Linha Protheus)']
-          else:
-            related_modules = []
-        else:
-          related_modules = []
-          
+            related_products_resp = query.named(named_query = 'get_products_by_modules', json_query=params).go().results
+            if related_products_resp:
+              related_products.extend({related_product.get('product').strip() for related_product in related_products_resp})
+
       # Se o módulo for do produto Framework (Linha RM) ou Framework (Linha Datasul) usar
       # todos os módulos do produto na busca.
       if module == 'TOTVS Educacional':
