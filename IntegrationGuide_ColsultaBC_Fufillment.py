@@ -488,7 +488,10 @@ def main():
       'encontrar inovação do suporte', 'encontrar evento do suporte', 'evento suporte', 'Onde encontrar eventos do suporte?',
       'Onde encontrar inovações do suporte?', 'Temos alguma página de informações do suporte?', 'Onde encontrar os comunicados do suporte?'
 ]
-
+    # Frases para mapear o evento tira duvidas
+    evento_tira_duvidas = ['Evento Tira duvida','Evento Tira duvidas']
+    #resposta_ETD = ['Olá, a Totvs tem o prazer de apresentar a página Protheus Informa:<br>https://suporteprotheusinforma.totvs.com/']
+    
     # Pegamos dos parâmetros a pergunta do usuário, o módulo e o produto selecionados.
     question = parameters.get('question')
     module = parameters.get('module')
@@ -522,26 +525,31 @@ def main():
     question_tmp = unidecode(question.lower())
     # Valida se o usuário está perguntando algo relacionado a "falar com analista".
     # Em caso positivo respondemos que o assistente pode tentar ajudá-lo primeiro.
-    matched_analist_questions = [analist_question for analist_question in analista_questions if fuzz.ratio(question_tmp, analist_question) >= 90]
+    matched_analist_questions = [analist_question for analist_question in analista_questions if fuzz.ratio(question_tmp, unidecode(analist_question.lower())) >= 90]
     if matched_analist_questions:
       return textResponse(random.choice(resposta_analista), jumpTo='Consulta BC', customLog=custom_log)
 
-    matched_cst_questions = [cst_question for cst_question in cst_questions if fuzz.ratio(question_tmp, cst_question) >= 90]
+    matched_cst_questions = [cst_question for cst_question in cst_questions if fuzz.ratio(question_tmp, unidecode(cst_question.lower())) >= 90]
     if matched_cst_questions:
       return textResponse(random.choice(resposta_cst), jumpTo='Consulta BC', customLog=custom_log)
 
-    matched_cloud_questions = [cloud_question for cloud_question in cloud_questions if fuzz.ratio(question_tmp, cloud_question) >= 90]
+    matched_cloud_questions = [cloud_question for cloud_question in cloud_questions if fuzz.ratio(question_tmp, unidecode(cloud_question.lower())) >= 90]
     if matched_cloud_questions:
       return textResponse(random.choice(resposta_cloud), jumpTo='Consulta BC', customLog=custom_log)
 
-    matched_ticket_questions = [ticket_question for ticket_question in ticket_questions if fuzz.ratio(question_tmp, ticket_question) >= 90]
+    matched_ticket_questions = [ticket_question for ticket_question in ticket_questions if fuzz.ratio(question_tmp, unidecode(ticket_question.lower())) >= 90]
     if re.search('[0-9]{7,}', question_tmp) or matched_ticket_questions:
       return textResponse('Entendi que você está querendo consultar uma solicitação. Vou te levar para o menu de seleção e você poderá selecionar a opção de "Consultar solicitação".', jumpTo='Identificar assunto')
 
-    matched_eventos_protheus_questions = [eventos_protheus_question for eventos_protheus_question in eventos_suporte_protheus_questions if fuzz.ratio(question_tmp, eventos_protheus_question) >= 90]
+    matched_eventos_protheus_questions = [eventos_protheus_question for eventos_protheus_question in eventos_suporte_protheus_questions if fuzz.ratio(question_tmp, unidecode(eventos_protheus_question.lower())) >= 90]
     if matched_eventos_protheus_questions:
       return textResponse('Você pode encontrar informações sobre nossos eventos na página:<br>https://suporteprotheusinforma.totvs.com/', jumpTo='Consulta BC', customLog=custom_log)
 
+    ## evento tira duvida
+    matched_evento_tira_duvida = [evento_tira_duvida for evento_tira_duvida in evento_tira_duvidas if fuzz.ratio(question_tmp, unidecode(evento_tira_duvida.lower())) >= 90]
+    if matched_evento_tira_duvida:
+      return textResponse('Olá, a Totvs tem o prazer de apresentar a página Protheus Informa:<br>https://suporteprotheusinforma.totvs.com/', jumpTo='Consulta BC', customLog=custom_log)
+    
     if 'issue' in question_tmp:
       if username:
         name = f'{username}, i'
@@ -609,11 +617,10 @@ def main():
 
       # Se o módulo for do produto Framework (Linha RM) ou Framework (Linha Datasul) usar
       # todos os módulos do produto na busca.
-      if module == 'TOTVS Educacional':
+      if module == 'TOTVS Educacional' or module == 'Educacional' or product == 'Educacional':
         product = ['App TOTVS EduConnect', 'Educacional']
         module = None
-      elif module == 'Framework' or module == 'Framework e Tecnologia' or module == 'TOTVS Aprovações e Atendimento' \
-        or module == 'TOTVS Obras e Projetos' or module == 'TOTVS Gestão de Imóveis':
+      elif module in ['Framework', 'Framework e Tecnologia'] or product in ['Gestão de Imóveis', 'Obras e Projetos', 'TOTVS Aprovações e Atendimento']:
         module = None
 
       # Salvamos a pergunta do usuário nos parâmetros para usar esta informações em outro nó.  
@@ -624,11 +631,13 @@ def main():
 
       # Definimos 3 thresholds em ordem decrescente.
       if segment.lower() == 'plataformas':
-        thresholds = [75, 65, 55]
+        thresholds = [85, 75, 65]
       else:
         thresholds = [65, 55, 45]
         if homolog:
           thresholds = [70, 60, 50]
+
+      #thresholds = [75, 70, 65]
 
       # Enviamos a pergunta do usuário para o modelo com seus respectivos produto, módulo, bigrams e trigrams
       # Nesta etapa usamos o menor threshold para obter o maior número de matches.
@@ -637,9 +646,8 @@ def main():
         return textResponse(results_kcs)
 
       # TDN habilitado apenas para plataformas por enquanto
-      tdn_prd =  ['Gestão de Pessoas (SIGAGPE)', 'Financeiro (SIGAFIN)']
-      tdn_hml =  ['Estoque e Custos (SIGAEST)',
-                  'Faturamento (SIGAFAT)',
+      tdn_prd =  ['Gestão de Pessoas (SIGAGPE)', 'Financeiro (SIGAFIN)', 'Estoque e Custos (SIGAEST)']
+      tdn_hml =  ['Faturamento (SIGAFAT)',
                   'Automação Fiscal',
                   'Arquivos Magnéticos (SIGAFIS)',
                   'Contabilidade Gerencial (SIGACTB)',
@@ -661,7 +669,8 @@ def main():
                   'Avaliação e Pesquisa de Desempenho (SIGAAPD)',
                   'Portal CP Human',
                   'Gestão de Contratos (SIGAGCT)',
-                  'Departamentos (SIGAJURI)']
+                  'Departamentos (SIGAJURI)',
+                  'Meu RH']
 
       if module in (tdn_hml + tdn_prd):
         results_tdn, total_matches_tdn = get_model_answer(filtered_sentence, product, module, thresholds[-1], homolog, db="TDN")
