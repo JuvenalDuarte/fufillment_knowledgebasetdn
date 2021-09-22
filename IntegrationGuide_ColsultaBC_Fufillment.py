@@ -599,7 +599,7 @@ def main():
       # TODO: Família de módulos
       related_modules = []
       related_products = []
-      if segment.lower() == 'plataformas' or (segment.lower() == 'supply' and homolog):
+      if segment.lower() == 'plataformas' or segment.lower() == 'supply':
         params = {'module': module, 'segment': segment}
         query = Query(login, get_aggs=True, only_hits=False)
         response = query.named(named_query = 'get_related_modules', json_query=params).go().results
@@ -630,14 +630,22 @@ def main():
       filtered_sentence = unidecode(question)
 
       # Definimos 3 thresholds em ordem decrescente.
-      if segment.lower() == 'plataformas':
-        thresholds = [85, 75, 65]
-      else:
-        thresholds = [65, 55, 45]
-        if homolog:
-          thresholds = [70, 60, 50]
-
-      #thresholds = [75, 70, 65]
+      thresholds = []
+      if homolog:
+        query = Query(login)
+        params = {'segment': segment}
+        thresholds_results = query.named(named_query = 'get_threshold_by_segment', json_query=params).go().results
+        if thresholds_results:
+          thresholds_str = thresholds_results[0].get('thresholds')
+          thresholds = [int(threshold.strip()) for threshold in thresholds_str.split(',') if threshold.strip().isnumeric()]
+      
+      if not thresholds:
+        if segment.lower() == 'plataformas':
+          thresholds = [85, 75, 65]
+        else:
+          thresholds = [65, 55, 45]
+          if homolog:
+            thresholds = [70, 60, 50]
 
       # Enviamos a pergunta do usuário para o modelo com seus respectivos produto, módulo, bigrams e trigrams
       # Nesta etapa usamos o menor threshold para obter o maior número de matches.
