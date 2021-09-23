@@ -654,33 +654,39 @@ def main():
         return textResponse(results_kcs)
 
       # TDN habilitado apenas para plataformas por enquanto
-      tdn_prd =  ['Gestão de Pessoas (SIGAGPE)', 'Financeiro (SIGAFIN)', 'Estoque e Custos (SIGAEST)']
-      tdn_hml =  ['Faturamento (SIGAFAT)',
-                  'Automação Fiscal',
+      tdn_modules =  ['Gestão de Pessoas (SIGAGPE)', 
+				  'Financeiro (SIGAFIN)', 
+				  'Estoque e Custos (SIGAEST)',
+				  'Customizações (ADVPL)',
+				  'Ativo Fixo (SIGAATF)',
+				  'Contabilidade Gerencial (SIGACTB)',
+				  'Compras (SIGACOM)',
+				  'Gestão de Contratos (SIGAGCT)',
+				  'Call Center (SIGATMK)',
+				  'Customer Relationship Management (SIGACRM)',
+				  'Faturamento (SIGAFAT)',
+				  'Gestão de Projetos (SIGAPMS)',
+				  'Departamentos (SIGAJURI)',
+				  'Pré Faturamento de Serviços (SIGAPFS)',
+				  'Avaliação e Pesquisa de Desempenho (SIGAAPD)',
+				  'Medicina e Segurança do Trabalho (SIGAMDT)',
+				  'Ponto Eletrônico (SIGAPON)',
+				  'Recrutamento e Seleção de Pessoas (SIGARSP)',
+				  'Treinamento (SIGATRM)',
+				  'Gestão de Transporte de Passageiros (SIGAGTP)',
+				  'Easy Export Control (SIGAEEC)',
+				  'Easy Import Control (SIGAEIC)']
+				  
+      tdn_hml =  ['Automação Fiscal',
                   'Arquivos Magnéticos (SIGAFIS)',
-                  'Contabilidade Gerencial (SIGACTB)',
-                  'Ponto Eletrônico (SIGAPON)',
-                  'Medicina e Segurança do Trabalho (SIGAMDT)',
                   'Terceirização (SIGATEC)',
-                  'Ativo Fixo (SIGAATF)',
-                  'Gestão de Transporte de Passageiros (SIGAGTP)',
-                  'Easy Export Control (SIGAEEC)',
-                  'Pré Faturamento de Serviços (SIGAPFS)',
-                  'Gestão de Projetos (SIGAPMS)',
-                  'Call Center (SIGATMK)',
-                  'Compras (SIGACOM)',
-                  'Easy Import Control (SIGAEIC)',
-                  'Customer Relationship Management (SIGACRM)',
-                  'Customizações (ADVPL)',
-                  'Treinamento (SIGATRM)',
-                  'Recrutamento e Seleção de Pessoas (SIGARSP)',
-                  'Avaliação e Pesquisa de Desempenho (SIGAAPD)',
                   'Portal CP Human',
-                  'Gestão de Contratos (SIGAGCT)',
-                  'Departamentos (SIGAJURI)',
                   'Meu RH']
 
-      if module in (tdn_hml + tdn_prd):
+      if homolog:
+        tdn_modules = tdn_modules + tdn_hml
+
+      if module in tdn_modules:
         results_tdn, total_matches_tdn = get_model_answer(filtered_sentence, product, module, thresholds[-1], homolog, db="TDN")
       else:
         results_tdn = []
