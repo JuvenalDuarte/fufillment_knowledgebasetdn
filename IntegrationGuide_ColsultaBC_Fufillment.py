@@ -278,8 +278,11 @@ def get_model_answer(sentence, product, module, threshold, homolog, db="KCS"):
           api_url = 'https://protheusassistant-searchdocshomolog.apps.carol.ai/query'
 
     elif db == "TDN":
+        # Adicionamos o produto aos filtros da consulta
+        filters = [{'filter_field': 'produto_catalogo', 'filter_value': product}]
+        # Caso haja um módulo o adicionamos aos filtros da consulta
         if module:
-            filters = [{'filter_field': 'modulo_catalogo', 'filter_value': module}]
+            filters.append({'filter_field': 'modulo_catalogo', 'filter_value': module})
 
         data['k'] = 10
         data['filters'] = filters
@@ -447,7 +450,11 @@ def main():
             'abrir chamado modulo faturamento',
             'abrir chamado modulo rh',
             'abrir chamado modulo estoque',
-            'atendente humano']
+            'atendente humano',
+            'falar com o consultor',
+            'quero falar com o consultor',
+            'atendimento com consultor',
+            'abrir chamado com consultor']
     # Opções de respostas para quando o usuário enviar apenas uma palavra na pergunta.
     respostas_uma_palavra = ['Poderia detalhar um pouco mais sua dúvida?',
              'Me conte com mais detalhes a sua dúvida.',
