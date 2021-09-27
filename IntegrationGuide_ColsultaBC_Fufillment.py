@@ -450,11 +450,7 @@ def main():
             'abrir chamado modulo faturamento',
             'abrir chamado modulo rh',
             'abrir chamado modulo estoque',
-            'atendente humano',
-            'falar com o consultor',
-            'quero falar com o consultor',
-            'atendimento com consultor',
-            'abrir chamado com consultor']
+            'atendente humano']
     # Opções de respostas para quando o usuário enviar apenas uma palavra na pergunta.
     respostas_uma_palavra = ['Poderia detalhar um pouco mais sua dúvida?',
              'Me conte com mais detalhes a sua dúvida.',
