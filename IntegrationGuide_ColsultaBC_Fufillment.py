@@ -203,13 +203,27 @@ def orderby_page_views(login, article_results, k=5):
     page_views_results = query.named(named_query = 'get_document_views', json_query=params).go().results
 
     # itera os conteudos com mais visualizações
+    ranked_article_ids = []
     article_results_ranked = []
     for i, pageview in enumerate(page_views_results):        
         document_result = [result for result in article_results if str(result.get('id')) == pageview.get('documentid')]
         if not document_result: continue
         document_result = document_result[0]
+        ranked_article_ids.append(document_result.get('id'))
         document_result.update({"source":"kcs"})
         article_results_ranked.append(document_result)
+        
+    # se os artigos do pageview ainda não completarem o top 5, completa pela ordem de retorno
+    while (len(article_results_ranked) < k) and (len(article_results) > 0):
+        next_article = article_results.pop(0)
+        
+        # itera até encontrar o próximo artigo ainda não rankeado
+        while (next_article.get('id') in ranked_article_ids) and (len(article_results) > 0):
+            next_article = article_results.pop(0)
+        
+        # se encontrou algum resultado adiciona a lista de retorno
+        if (next_article.get('id') not in ranked_article_ids):
+            article_results_ranked.append(next_article)
 
     if article_results_ranked:
         # Pegamos até 5 artigos dos artigos mais consultados
@@ -320,7 +334,7 @@ def get_results(login, results, channel, k=3, segment=None):
     pv=False
     higher_than_95 = [r for r in results if r.get('score') > 0.95]
     #if (len(results) > 10) and (not higher_than_95 or len(higher_than_95) > 5):
-    if (len(results) > 10) and (segment == 'Plataformas') and (not higher_than_95 or len(higher_than_95) > 5):
+    if (len(results) > 5) and (segment == 'Plataformas') and (not higher_than_95 or len(higher_than_95) > 5):
         results = orderby_page_views(login, article_results=results)
         pv=True
         # Para o caso de page views o cliente quer ver os top 5
