@@ -22,20 +22,6 @@ def remove_punctuation(sentence):
     return sentence.translate(table)  
 
 
-def get_n_grams(sentence, N=2):
-    # Função que cria n grams de uma sentença.
-    # Os n grams são criados em minúsculo e sem caracteres especiais.
-    # O default são bigrams (N=2): combinações de duas palavras.
-    # Os ngrams são juntados por espaço e underline para podermos dar match
-    # com as tags do artigos.
-    from unidecode import unidecode
-    sentence = remove_punctuation(unidecode(sentence.lower()))
-    sentence = sentence.split()
-    n_grams_arr = [sentence[i:i+N] for i in range(len(sentence)-N+1)]
-    n_grams = [' '.join(n_gram) for n_gram in n_grams_arr]
-    n_grams.extend(['_'.join(n_gram) for n_gram in n_grams_arr])
-    return n_grams
-
 def resize_images(answer):
     # Define o tamanho das imagens para que possam ser exibidas propriamente na janela de conversação.
     import re
@@ -83,15 +69,15 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
     
     # Caso o canal não seja o portal não podemos abrir uma nova aba no navegador.
     target = '_blank' if channel != 'portal' else '_placeholder'
-    header = best_match.get(d[best_match.get('source')]["header"])
+    header = best_match.get(d[best_match.get('database')]["header"])
 
     # Para o TDN quando não existe uma issue correspondente o atributo summary é vazio.
     # Nesses casos será usado o título do artigo.
     if header == "":
-        header = best_match.get(d[best_match.get('source')]["header2"])
+        header = best_match.get(d[best_match.get('database')]["header2"])
 
-    header_ref = best_match.get(d[best_match.get('source')]["header_ref"])
-    labels = best_match.get(d[best_match.get('source')]["tags"])
+    header_ref = best_match.get(d[best_match.get('database')]["header_ref"])
+    labels = best_match.get(d[best_match.get('database')]["tags"])
 
     # Garante as tags são uma lista (evita problemas no fluxo de abertura de ticket)
     if not isinstance(labels, list):
@@ -106,19 +92,19 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
         # Os atributos usados dependem da fonte do artigo. Primeiro recuperamos esta fonte pelo atributo 
         # 'source' no artigo, em seguinda a usamos no dicionário field_mapping para localizar o nome da
         # coluna correspondente em cada uma das fontes
-        content = best_match.get(d[best_match.get('source')]["content"])
+        content = best_match.get(d[best_match.get('database')]["content"])
         content = resize_images(content)
         content = resize_videos(content)
         content = open_url_in_new_tab(content)
-        sancontent = best_match.get(d[best_match.get('source')]["sanitized_content"])
+        sancontent = best_match.get(d[best_match.get('database')]["sanitized_content"])
 
         # Adicionamos ao início da resposta o título do artigo de melhor match com sua respectiva URL de acesso
         answer = f'<br><b><a target="{target}" rel="noopener noreferrer" href="{header_ref}" style="text-decoration: underline"><strong>{header}</strong></a></b><br>' + content
         
         # Caso o artigo com maior score seja do TDN adicionamos o link para o patch, caso disponível
-        if best_match.get('source') == "tdn":
+        if best_match.get('database') == "TDN":
 
-            best_match['module'] = best_match.get(d.get('tdn').get('module'))
+            best_match['module'] = best_match.get(d.get('TDN').get('module'))
 
             try:
                 patch = best_match.get('patch_url')
@@ -158,14 +144,14 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
 
 
         for r in tmp_results:
-            detail_header = r.get(d[r.get('source')]["header"])
+            detail_header = r.get(d[r.get('database')]["header"])
 
             # Para o TDN quando não existe uma issue correspondente o atributo summary é vazio.
             # Nesses casos será usado o título do artigo.
             if detail_header == "":
-                detail_header = r.get(d[r.get('source')]["header2"])
+                detail_header = r.get(d[r.get('database')]["header2"])
 
-            detail_header_ref = r.get(d[r.get('source')]["header_ref"])
+            detail_header_ref = r.get(d[r.get('database')]["header_ref"])
             url_list.append(detail_header_ref)
 
             answer = answer + f'<br><b><a target="{target}" rel="noopener noreferrer" href="{detail_header_ref}" style="text-decoration: underline">{detail_header}</a></b><br>'
@@ -173,11 +159,11 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
 
     # Caso tenhamos a informação de seção do melhor match nós adicionamos ao final da resposta
     # o link da seção
-    if d[best_match.get('source')]["section_url"] in best_match:
+    if d[best_match.get('database')]["section_url"] in best_match:
 
-        section_url = best_match.get(d[best_match.get('source')]["section_url"])
+        section_url = best_match.get(d[best_match.get('database')]["section_url"])
 
-        if d[best_match.get('source')]["section"] in best_match:
+        if d[best_match.get('database')]["section"] in best_match:
             section = best_match.get('section')
         else:
             section = 'Clique aqui'
@@ -210,7 +196,7 @@ def orderby_page_views(login, article_results, k=5):
         if not document_result: continue
         document_result = document_result[0]
         ranked_article_ids.append(document_result.get('id'))
-        document_result.update({"source":"kcs"})
+        document_result.update({"database":"KCS"})
         article_results_ranked.append(document_result)
         
     # se os artigos do pageview ainda não completarem o top 5, completa pela ordem de retorno
@@ -263,47 +249,29 @@ def top_page_views(login, module, k=5):
     return best_match, article_results_ranked
 
 
-def get_model_answer(sentence, product, module, threshold, homolog, db="KCS"):
+def get_model_answer(sentence, product, module, threshold, homolog):
     # Fazemos a consulta na API do modelo
     import requests
+
+    # Adicionamos o produto aos filtros da consulta
+    filters = [{'filter_field': 'product', 'filter_value': product}]
+    # Caso haja um módulo o adicionamos aos filtros da consulta
+    if module:
+        filters.append({'filter_field': 'module', 'filter_value': module})
 
     # Pegamos até 30 artigos com score maior que o threshold para que possamos
     # fazer eventuais filtros depois
     data = {
         'query': sentence,
-        'threshold': threshold
+        'threshold_custom': {'tags': 80, 'all': threshold},
+        'k': 30,
+        'filters': filters,
+        'response_columns': ['id', 'sentence', 'title', 'section_id', 'html_url', 'solution', 'sanitized_solution', 'tags', 'section_html_url', 'module', 'patch_version', 'patch_url', 'summary', 'situacao_requisicao', 'database']
     }
 
-    # Define os filtros e os atributos dependendo da base 
-    if db == "KCS":
-        # Adicionamos o produto aos filtros da consulta
-        filters = [{'filter_field': 'product', 'filter_value': product}]
-        # Caso haja um módulo o adicionamos aos filtros da consulta
-        if module:
-            filters.append({'filter_field': 'module', 'filter_value': module})
+    #return data, 0
 
-        data['k'] = 30
-        data['filters'] = filters
-        data['threshold_custom'] = {'tags': 80}
-        data['response_columns'] = ['id', 'sentence', 'title', 'section_id', 'html_url', 'solution', 'sanitized_solution', 'tags', 'section_html_url', 'module']
-        if not homolog:
-          api_url = 'https://protheusassistant-searchsupportdocs.apps.carol.ai/query'
-        else:
-          api_url = 'https://protheusassistant-searchdocshomolog.apps.carol.ai/query'
-
-    elif db == "TDN":
-        # Adicionamos o produto aos filtros da consulta
-        filters = [{'filter_field': 'produto_catalogo', 'filter_value': product}]
-        # Caso haja um módulo o adicionamos aos filtros da consulta
-        if module:
-            filters.append({'filter_field': 'modulo_catalogo', 'filter_value': module})
-
-        data['k'] = 10
-        data['filters'] = filters
-        data['threshold_custom'] = {'labels': 80, 'all': threshold}
-        data['response_columns'] = ['id', 'html_url', 'solucao', "patch_version", "patch_url", "summary", "situacao_requisicao", "modulo_catalogo"]
-        #api_url = 'https://sentencesimilarity-tdnknowledgebase.apps.carol.ai/query'
-        api_url = "https://protheusassistant-tdnknowledgebaseprd.apps.carol.ai/query"
+    api_url = 'https://protheusassistant-carolinaunifiedapi.apps.carol.ai/query'
        
     # Enviamos a consulta para o modelo
     response = requests.post(url=api_url, json=data)
@@ -334,7 +302,7 @@ def get_results(login, results, channel, k=3, segment=None):
     pv=False
     higher_than_95 = [r for r in results if r.get('score') > 0.95]
     #if (len(results) > 10) and (not higher_than_95 or len(higher_than_95) > 5):
-    if (len(results) > 5) and (segment == 'Plataformas') and (not higher_than_95 or len(higher_than_95) > 5):
+    if (len(results) > 10) and (segment == 'Plataformas') and (not higher_than_95 or len(higher_than_95) > 5):
         results = orderby_page_views(login, article_results=results)
         pv=True
         # Para o caso de page views o cliente quer ver os top 5
@@ -346,7 +314,7 @@ def get_results(login, results, channel, k=3, segment=None):
     # Pegamos os k top resultados, o padrão é 3.
     results = results[:k]
 
-    field_mapping = {"kcs" : {"header": "title",
+    field_mapping = {"KCS" : {"header": "title",
                               "header2": "title",
                               "header_ref": "html_url",
                               "content": "solution",
@@ -366,13 +334,13 @@ def get_results(login, results, channel, k=3, segment=None):
                               "section":"section",
                               "section_url":"sectionurl"},
                      
-                     "tdn" : {"header": "summary",
+                     "TDN" : {"header": "summary",
                               "header2": "title",
                               "header_ref": "html_url",
                               "content": "situacao_requisicao",
                               "sanitized_content": "situacao_requisicao",
-                              "tags": "labels",
-                              "module": "modulo_catalogo",
+                              "tags": "tags",
+                              "module": "module",
                               "section":"",
                               "section_url":""}}
 
@@ -604,7 +572,7 @@ def main():
       # nós retornamos os 5 artigos mais consultados daquele módulo baseado nas métricas do Google Analytics.
       if module_original and question.lower() == module_original.lower():
         best_match, pv_results = top_page_views(login, module_original)
-        for item in pv_results: item.update({"source":"elasticsearch"})
+        for item in pv_results: item.update({"database":"elasticsearch"})
 
         # Obtemos a resposta, o melhor match e suas respectivas informações
         answer, san_answer, best_match, parms = get_results(login, pv_results, segment=segment, channel=channel, k=5)
@@ -666,54 +634,46 @@ def main():
 
       # Enviamos a pergunta do usuário para o modelo com seus respectivos produto, módulo, bigrams e trigrams
       # Nesta etapa usamos o menor threshold para obter o maior número de matches.
-      results_kcs, total_matches_kcs = get_model_answer(filtered_sentence, product, module, thresholds[-1], homolog, db="KCS")
+      results_unified, total_matches_unified = get_model_answer(filtered_sentence, product, module, thresholds[-1], homolog)
       if debug:
-        return textResponse(results_kcs)
+        answer = f"search: {filtered_sentence}; product: {product}; module: {module}; threshold: {thresholds[-1]}.\n"
+        answer += f"results: {results_unified}\n."
+        return textResponse(answer)
 
       # TDN habilitado apenas para plataformas por enquanto
-      tdn_modules =  ['Gestão de Pessoas (SIGAGPE)', 
-				  'Financeiro (SIGAFIN)', 
-				  'Estoque e Custos (SIGAEST)',
-				  'Customizações (ADVPL)',
-				  'Ativo Fixo (SIGAATF)',
-				  'Contabilidade Gerencial (SIGACTB)',
-				  'Compras (SIGACOM)',
-				  'Gestão de Contratos (SIGAGCT)',
-				  'Call Center (SIGATMK)',
-				  'Customer Relationship Management (SIGACRM)',
-				  'Faturamento (SIGAFAT)',
-				  'Gestão de Projetos (SIGAPMS)',
-				  'Departamentos (SIGAJURI)',
-				  'Pré Faturamento de Serviços (SIGAPFS)',
-				  'Avaliação e Pesquisa de Desempenho (SIGAAPD)',
-				  'Medicina e Segurança do Trabalho (SIGAMDT)',
-				  'Ponto Eletrônico (SIGAPON)',
-				  'Recrutamento e Seleção de Pessoas (SIGARSP)',
-				  'Treinamento (SIGATRM)',
-				  'Gestão de Transporte de Passageiros (SIGAGTP)',
-				  'Easy Export Control (SIGAEEC)',
-				  'Easy Import Control (SIGAEIC)']
-				  
-      tdn_hml =  ['Automação Fiscal',
+      tdn_prd =  ['Gestão de Pessoas (SIGAGPE)', 'Financeiro (SIGAFIN)', 'Estoque e Custos (SIGAEST)']
+      tdn_hml =  ['Faturamento (SIGAFAT)',
+                  'Automação Fiscal',
                   'Arquivos Magnéticos (SIGAFIS)',
+                  'Contabilidade Gerencial (SIGACTB)',
+                  'Ponto Eletrônico (SIGAPON)',
+                  'Medicina e Segurança do Trabalho (SIGAMDT)',
                   'Terceirização (SIGATEC)',
+                  'Ativo Fixo (SIGAATF)',
+                  'Gestão de Transporte de Passageiros (SIGAGTP)',
+                  'Easy Export Control (SIGAEEC)',
+                  'Pré Faturamento de Serviços (SIGAPFS)',
+                  'Gestão de Projetos (SIGAPMS)',
+                  'Call Center (SIGATMK)',
+                  'Compras (SIGACOM)',
+                  'Easy Import Control (SIGAEIC)',
+                  'Customer Relationship Management (SIGACRM)',
+                  'Customizações (ADVPL)',
+                  'Treinamento (SIGATRM)',
+                  'Recrutamento e Seleção de Pessoas (SIGARSP)',
+                  'Avaliação e Pesquisa de Desempenho (SIGAAPD)',
                   'Portal CP Human',
+                  'Gestão de Contratos (SIGAGCT)',
+                  'Departamentos (SIGAJURI)',
                   'Meu RH']
 
-      if homolog:
-        tdn_modules = tdn_modules + tdn_hml
-
-      if module in tdn_modules:
-        results_tdn, total_matches_tdn = get_model_answer(filtered_sentence, product, module, thresholds[-1], homolog, db="TDN")
-      else:
-        results_tdn = []
-        total_matches_tdn = 0
+      tdn_all = list(set(tdn_prd + tdn_hml))
 
       # Enviamos a pergunta do usuário para o modelo mas agora com os módulos da família do módulo selecionado.
       # Nesta etapa usamos o menor threshold para obter o maior número de matches.
       related_modules_results = []
       if related_modules:
-        related_modules_results, related_modules_total_matches = get_model_answer(filtered_sentence, related_products, related_modules, thresholds[-1], homolog, db="KCS")
+        related_modules_results, related_modules_total_matches = get_model_answer(filtered_sentence, related_products, related_modules, thresholds[-1], homolog)
       
       # Iteramos a lista de threshold, de forma a irmos diminuindo o threshold
       # até obtermos uma resposta
@@ -721,26 +681,19 @@ def main():
       for threshold in thresholds:
         best_match = None
 
-        answer += f"Encontrado um total de {len(results_kcs)} artigos no KCS, {len(results_tdn)} no TDN.\n"
+        answer += f"Encontrado um total de {total_matches_unified} artigos.\n"
+
+        # Retirando artigos cujo modulo TDN ainda não foi homologado
+        all_results = [result for result in results_unified if not (result.get('database') == "TDN" and result.get('module') not in tdn_all)]
 
         # Filtrando apenas resultados acima do threshold
-        tmp_results_kcs = [result for result in results_kcs if result.get('score') >= threshold/100]
-        tmp_results_tdn = [result for result in results_tdn if result.get('score') >= threshold/100]
+        all_results = [result for result in results_unified if result.get('score') >= threshold/100]
 
-        answer += f"Artigos acima do threshold {threshold}: {len(tmp_results_kcs)} KCS; {len(tmp_results_tdn)} TDN.\n"
-
-        # ordena o ranking de resultados para cada base e adiciona a tag da origim para facilitar formatação
-        for item in tmp_results_kcs: item.update({"source":"kcs"})
-        for item in tmp_results_tdn: item.update({"source":"tdn"})
+        answer += f"Artigos acima do threshold {threshold}: {len(all_results)}.\n"
 
         # Se nenhum artigo for retornado do KCS procura nos módulos relacionados
-        if not tmp_results_kcs:
-            tmp_results_kcs = [result for result in related_modules_results if result.get('score') >= threshold/100]
-            for item in tmp_results_kcs: item.update({"source":"kcs"})
-            #answer += f"{len(tmp_results_kcs)} adicionados pela pesquisa em módulos relacionados.\n"
-
-        # Coloca todos os artigos acima do threshold em uma mesma lista
-        all_results = tmp_results_kcs + tmp_results_tdn
+        if not all_results:
+            all_results = [result for result in related_modules_results if result.get('score') >= threshold/100]
 
         # Caso nenhum artigo atenda o threshold de score
         if not all_results: continue
