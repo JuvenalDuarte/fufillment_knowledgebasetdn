@@ -302,7 +302,7 @@ def get_results(login, results, channel, k=3, segment=None):
     pv=False
     higher_than_95 = [r for r in results if r.get('score') > 0.95]
     #if (len(results) > 10) and (not higher_than_95 or len(higher_than_95) > 5):
-    if (len(results) > 10) and (segment == 'Plataformas') and (not higher_than_95 or len(higher_than_95) > 5):
+    if (len(results) > 5) and (segment == 'Plataformas') and (len(higher_than_95) > 5):
         results = orderby_page_views(login, article_results=results)
         pv=True
         # Para o caso de page views o cliente quer ver os top 5
@@ -640,32 +640,36 @@ def main():
         answer += f"results: {results_unified}\n."
         return textResponse(answer)
 
+
       # TDN habilitado apenas para plataformas por enquanto
-      tdn_prd =  ['Gestão de Pessoas (SIGAGPE)', 'Financeiro (SIGAFIN)', 'Estoque e Custos (SIGAEST)']
-      tdn_hml =  ['Faturamento (SIGAFAT)',
-                  'Automação Fiscal',
+      tdn_prd =  ['Gestão de Pessoas (SIGAGPE)', 
+				  'Financeiro (SIGAFIN)', 
+				  'Estoque e Custos (SIGAEST)',
+				  'Customizações (ADVPL)',
+				  'Ativo Fixo (SIGAATF)',
+				  'Contabilidade Gerencial (SIGACTB)',
+				  'Compras (SIGACOM)',
+				  'Gestão de Contratos (SIGAGCT)',
+				  'Call Center (SIGATMK)',
+				  'Customer Relationship Management (SIGACRM)',
+				  'Faturamento (SIGAFAT)',
+				  'Gestão de Projetos (SIGAPMS)',
+				  'Departamentos (SIGAJURI)',
+				  'Pré Faturamento de Serviços (SIGAPFS)',
+				  'Avaliação e Pesquisa de Desempenho (SIGAAPD)',
+				  'Medicina e Segurança do Trabalho (SIGAMDT)',
+				  'Ponto Eletrônico (SIGAPON)',
+				  'Recrutamento e Seleção de Pessoas (SIGARSP)',
+				  'Treinamento (SIGATRM)',
+				  'Gestão de Transporte de Passageiros (SIGAGTP)',
+				  'Easy Export Control (SIGAEEC)',
+				  'Easy Import Control (SIGAEIC)',
+          'Meu RH']
+				  
+      tdn_hml =  ['Automação Fiscal',
                   'Arquivos Magnéticos (SIGAFIS)',
-                  'Contabilidade Gerencial (SIGACTB)',
-                  'Ponto Eletrônico (SIGAPON)',
-                  'Medicina e Segurança do Trabalho (SIGAMDT)',
                   'Terceirização (SIGATEC)',
-                  'Ativo Fixo (SIGAATF)',
-                  'Gestão de Transporte de Passageiros (SIGAGTP)',
-                  'Easy Export Control (SIGAEEC)',
-                  'Pré Faturamento de Serviços (SIGAPFS)',
-                  'Gestão de Projetos (SIGAPMS)',
-                  'Call Center (SIGATMK)',
-                  'Compras (SIGACOM)',
-                  'Easy Import Control (SIGAEIC)',
-                  'Customer Relationship Management (SIGACRM)',
-                  'Customizações (ADVPL)',
-                  'Treinamento (SIGATRM)',
-                  'Recrutamento e Seleção de Pessoas (SIGARSP)',
-                  'Avaliação e Pesquisa de Desempenho (SIGAAPD)',
-                  'Portal CP Human',
-                  'Gestão de Contratos (SIGAGCT)',
-                  'Departamentos (SIGAJURI)',
-                  'Meu RH']
+                  'Portal CP Human']
 
       tdn_all = list(set(tdn_prd + tdn_hml))
 
@@ -678,26 +682,26 @@ def main():
       # Iteramos a lista de threshold, de forma a irmos diminuindo o threshold
       # até obtermos uma resposta
       answer = ""
-      for threshold in thresholds:
-        best_match = None
+      threshold = thresholds[-1]
+      #for threshold in thresholds:
+      best_match = None
 
-        answer += f"Encontrado um total de {total_matches_unified} artigos.\n"
+      answer += f"Encontrado um total de {total_matches_unified} artigos.\n"
 
-        # Retirando artigos cujo modulo TDN ainda não foi homologado
-        all_results = [result for result in results_unified if not (result.get('database') == "TDN" and result.get('module') not in tdn_all)]
+      # Retirando artigos cujo modulo TDN ainda não foi homologado
+      all_results = [result for result in results_unified if not (result.get('database') == "TDN" and result.get('module') not in tdn_all)]
 
-        # Filtrando apenas resultados acima do threshold
-        all_results = [result for result in results_unified if result.get('score') >= threshold/100]
+      # Filtrando apenas resultados acima do threshold
+      all_results = [result for result in results_unified if result.get('score') >= threshold/100]
 
-        answer += f"Artigos acima do threshold {threshold}: {len(all_results)}.\n"
+      answer += f"Artigos acima do threshold {threshold}: {len(all_results)}.\n"
 
-        # Se nenhum artigo for retornado do KCS procura nos módulos relacionados
-        if not all_results:
-            all_results = [result for result in related_modules_results if result.get('score') >= threshold/100]
+      # Se nenhum artigo for retornado do KCS procura nos módulos relacionados
+      if not all_results:
+          all_results = [result for result in related_modules_results if result.get('score') >= threshold/100]
 
-        # Caso nenhum artigo atenda o threshold de score
-        if not all_results: continue
-
+      # Caso nenhum artigo atenda o threshold de score
+      if all_results:
         # Ordena a lista pela score
         all_results.sort(key=lambda x: x.get('score'), reverse=True)
 
@@ -712,7 +716,7 @@ def main():
             name = f'{username}, e'
           else:
             name = 'E'
-          answer = f'{name}ncontrei alguma coisa no módulo {best_match_module} que pode te ajudar.<br><br>' + answer
+          answer = f'{name}ncontrei alguma coisa no módulo <b>{best_match_module}</b> que pode te ajudar.<br><br>' + answer
 
         parameters.update(parms)
         custom_log = get_custom_log(parameters)
