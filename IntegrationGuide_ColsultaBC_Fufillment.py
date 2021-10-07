@@ -263,7 +263,7 @@ def get_model_answer(sentence, product, module, threshold, homolog):
     # fazer eventuais filtros depois
     data = {
         'query': sentence,
-        'threshold_custom': {'tags': 80, 'all': threshold},
+        'threshold_custom': {'tags': 80, 'tags-sinonimos': 80, 'all': threshold},
         'k': 30,
         'filters': filters,
         'response_columns': ['id', 'sentence', 'title', 'section_id', 'html_url', 'solution', 'sanitized_solution', 'tags', 'section_html_url', 'module', 'patch_version', 'patch_url', 'summary', 'situacao_requisicao', 'database']
