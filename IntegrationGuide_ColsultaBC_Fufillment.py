@@ -277,12 +277,12 @@ def get_model_answer(sentence, product, module, threshold, homolog):
     response = requests.post(url=api_url, json=data)
 
     if response.status_code != 200:
-        return [], 0
+        return [], -1 * response.status_code
 
     response = response.json()
         
     if not response:
-        return [], 0
+        return [], -1
 
     # Retornamos os artigos com maior score e o total de artigos encontramos acima do threshold fornecido
     results = response.get('topk_results')
@@ -635,6 +635,18 @@ def main():
       # Enviamos a pergunta do usuário para o modelo com seus respectivos produto, módulo, bigrams e trigrams
       # Nesta etapa usamos o menor threshold para obter o maior número de matches.
       results_unified, total_matches_unified = get_model_answer(filtered_sentence, product, module, thresholds[-1], homolog)
+
+      # Se o numero de matches for menor que zero isso significa que houve erro na chamada da API, o status code será
+      # retornado negativo.
+      if total_matches_unified < 0:
+        total_matches_unified = abs(total_matches_unified)
+        jump_to = 'Consulta BC'
+        answer = f'Desculpe, parece que tivemos alguma instabilidade em nosso sistema, vamos tentar novamente.'
+        answer = f'Se o erro persistir, por favor informe ao suporte o erro HTTP {abs(total_matches_unified)}.'
+        
+        # Retornamos a resposta para o usuário
+        return textResponse(f'{answer}', jumpTo='Consulta BC', customLog=custom_log)
+
       if debug:
         answer = f"search: {filtered_sentence}; product: {product}; module: {module}; threshold: {thresholds[-1]}.\n"
         answer += f"results: {results_unified}\n."
@@ -664,12 +676,23 @@ def main():
 				  'Gestão de Transporte de Passageiros (SIGAGTP)',
 				  'Easy Export Control (SIGAEEC)',
 				  'Easy Import Control (SIGAEIC)',
-          'Meu RH']
+				  'Meu RH',
+				  'Planejamento e Controle Orçamentário (SIGAPCO)', 
+				  'Fast Analytics', 
+				  'Gestão de Indicadores (SIGASGI)', 
+				  'Smart Analytics', 
+				  'Workflow (WORKFLOW)', 
+				  'Documentos Eletrônicos Protheus', 
+				  'Easy Drawback Control (SIGAEDC)', 
+				  'Easy Financing (SIGAEFF)']
 				  
       tdn_hml =  ['Automação Fiscal',
-                  'Arquivos Magnéticos (SIGAFIS)',
-                  'Terceirização (SIGATEC)',
-                  'Portal CP Human']
+          'Arquivos Magnéticos (SIGAFIS)',
+          'Terceirização (SIGATEC)',
+          'Portal CP Human',
+				  'Gestão de Contratos Públicos (SIGAGCP)', 
+				  'Automação e Coleta de Dados (SIGAACD)',
+				  'Easy Siscoserv (SIGAESS)']
 
       tdn_all = list(set(tdn_prd + tdn_hml))
 
@@ -678,7 +701,7 @@ def main():
       related_modules_results = []
       if related_modules:
         related_modules_results, related_modules_total_matches = get_model_answer(filtered_sentence, related_products, related_modules, thresholds[-1], homolog)
-      
+
       # Iteramos a lista de threshold, de forma a irmos diminuindo o threshold
       # até obtermos uma resposta
       answer = ""
