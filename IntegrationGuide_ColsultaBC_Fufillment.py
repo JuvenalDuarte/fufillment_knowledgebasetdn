@@ -270,8 +270,10 @@ def get_model_answer(sentence, product, module, threshold, homolog):
     }
 
     #return data, 0
-
-    api_url = 'https://protheusassistant-carolinaunifiedapi.apps.carol.ai/query'
+    if homolog:
+      api_url = 'https://protheusassistant-carolinaunifiedapi.apps.carol.ai/query'
+    else:
+      api_url = 'https://protheusassistant-carolinasupportprd.apps.carol.ai/query'
        
     # Enviamos a consulta para o modelo
     response = requests.post(url=api_url, json=data)
@@ -642,7 +644,7 @@ def main():
         total_matches_unified = abs(total_matches_unified)
         jump_to = 'Consulta BC'
         answer = f'Desculpe, parece que tivemos alguma instabilidade em nosso sistema, vamos tentar novamente.'
-        answer = f'Se o erro persistir, por favor informe ao suporte o erro HTTP {abs(total_matches_unified)}.'
+        #answer = f'Se o erro persistir, por favor informe ao suporte o erro HTTP {abs(total_matches_unified)}.'
         
         # Retornamos a resposta para o usuário
         return textResponse(f'{answer}', jumpTo='Consulta BC', customLog=custom_log)
@@ -736,10 +738,10 @@ def main():
         best_match_module = best_match.get('module')
         if module and best_match_module != module:
           if username:
-            name = f'{username}, e'
+            name = f'{username}, n'
           else:
-            name = 'E'
-          answer = f'{name}ncontrei alguma coisa no módulo <b>{best_match_module}</b> que pode te ajudar.<br><br>' + answer
+            name = 'N'
+          answer = f'{name}ão encontrei uma resposta no módulo {module}, mas talvez consiga ajuda-lo com artigos do módulo <b>{best_match_module}</b>.<br><br>' + answer
 
         parameters.update(parms)
         custom_log = get_custom_log(parameters)
