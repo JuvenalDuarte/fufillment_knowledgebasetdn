@@ -711,19 +711,13 @@ def main():
       #for threshold in thresholds:
       best_match = None
 
-      answer += f"Encontrado um total de {total_matches_unified} artigos.\n"
-
       # Retirando artigos cujo modulo TDN ainda não foi homologado
-      all_results = [result for result in results_unified if not (result.get('database') == "TDN" and result.get('module') not in tdn_all)]
-
-      # Filtrando apenas resultados acima do threshold
-      all_results = [result for result in results_unified if result.get('score') >= threshold/100]
-
-      answer += f"Artigos acima do threshold {threshold}: {len(all_results)}.\n"
+      # e filtrando apenas resultados acima do threshold
+      all_results = [result for result in results_unified if (result.get('score') >= threshold/100) and (result.get('database') != "TDN" or (result.get('module') in tdn_all))]
 
       # Se nenhum artigo for retornado do KCS procura nos módulos relacionados
       if not all_results:
-          all_results = [result for result in related_modules_results if result.get('score') >= threshold/100]
+        all_results = [result for result in related_modules_results if (result.get('score') >= threshold/100) and (result.get('database') != "TDN" or (result.get('module') in tdn_all))]
 
       # Caso nenhum artigo atenda o threshold de score
       if all_results:
