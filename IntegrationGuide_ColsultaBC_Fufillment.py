@@ -271,7 +271,7 @@ def get_model_answer(sentence, product, module, threshold, homolog):
 
     #return data, 0
     if homolog:
-      api_url = 'https://protheusassistant-carolinaunifiedapi.apps.carol.ai/query'
+      api_url = 'https://protheusassistant-carolinasupporthml.apps.carol.ai/query'
     else:
       api_url = 'https://protheusassistant-carolinasupportprd.apps.carol.ai/query'
        
@@ -686,15 +686,16 @@ def main():
 				  'Workflow (WORKFLOW)', 
 				  'Documentos Eletrônicos Protheus', 
 				  'Easy Drawback Control (SIGAEDC)', 
-				  'Easy Financing (SIGAEFF)']
-				  
-      tdn_hml =  ['Automação Fiscal',
+				  'Easy Financing (SIGAEFF)',
+          'Automação Fiscal',
           'Arquivos Magnéticos (SIGAFIS)',
           'Terceirização (SIGATEC)',
           'Portal CP Human',
 				  'Gestão de Contratos Públicos (SIGAGCP)', 
 				  'Automação e Coleta de Dados (SIGAACD)',
 				  'Easy Siscoserv (SIGAESS)']
+				  
+      tdn_hml =  []
 
       tdn_all = list(set(tdn_prd + tdn_hml))
 
