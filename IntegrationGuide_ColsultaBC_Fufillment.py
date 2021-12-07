@@ -252,6 +252,7 @@ def top_page_views(login, module, k=5):
 def get_model_answer(sentence, product, module, threshold, homolog):
     # Fazemos a consulta na API do modelo
     import requests
+    import time
 
     # Adicionamos o produto aos filtros da consulta
     filters = [{'filter_field': 'product', 'filter_value': product}]
@@ -275,9 +276,21 @@ def get_model_answer(sentence, product, module, threshold, homolog):
     else:
       api_url = 'https://protheusassistant-carolinasupportprd.apps.carol.ai/query'
        
-    # Enviamos a consulta para o modelo
-    response = requests.post(url=api_url, json=data)
+    # Enviamos a consulta para o modelo. Serão feitas até 3 tentativas de consulta a API,
+    # se nenhuma tiver sucesso informa o usuário da instabilidade.
+    retries = 3
+    status_code = -1
 
+    while (status_code != 200) and (retries > 0):
+      response = requests.post(url=api_url, json=data)
+      status_code = response.status_code
+      retries -= 1
+
+      # Caso a  request tenha falhado, espera 1s 
+      # pra esperar a API se recuperar
+      if (status_code != 200): time.sleep(1)
+
+    # Caso haja um erro persistente
     if response.status_code != 200:
         return [], -1 * response.status_code
 
