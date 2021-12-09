@@ -285,10 +285,7 @@ def get_model_answer(sentence, product, module, threshold, homolog):
       response = requests.post(url=api_url, json=data)
       status_code = response.status_code
       retries -= 1
-
-      # Caso a  request tenha falhado, espera 1s 
-      # pra esperar a API se recuperar
-      if (status_code != 200): time.sleep(1)
+      time.sleep(1)
 
     # Caso haja um erro persistente
     if response.status_code != 200:
