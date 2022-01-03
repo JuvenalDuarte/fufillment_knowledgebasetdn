@@ -131,7 +131,7 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
     url_list = []
     if len(results) > 1:
         if not pageviews:
-            results.pop(results.index(best_match))
+            #results.pop(results.index(best_match))
             answer = answer + '<br><br>Aqui tenho outros artigos que podem ajudar:'
             sanitized_answer = sanitized_answer + '\n\n\nAqui tenho outros artigos que podem ajudar:'
             tmp_results = results[:k]
@@ -141,21 +141,25 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
             answer += f'<br>Aqui estão os {len(results)} artigos relacionados à sua pergunta que foram mais consultados pelos nossos clientes.'
             sanitized_answer = answer
             tmp_results = results[:5]
+    else:
+      tmp_results = results
 
+    for r in tmp_results:
+        detail_header = r.get(d[r.get('database')]["header"])
 
-        for r in tmp_results:
-            detail_header = r.get(d[r.get('database')]["header"])
+        # Para o TDN quando não existe uma issue correspondente o atributo summary é vazio.
+        # Nesses casos será usado o título do artigo.
+        if detail_header == "":
+            detail_header = r.get(d[r.get('database')]["header2"])
 
-            # Para o TDN quando não existe uma issue correspondente o atributo summary é vazio.
-            # Nesses casos será usado o título do artigo.
-            if detail_header == "":
-                detail_header = r.get(d[r.get('database')]["header2"])
+        detail_header_ref = r.get(d[r.get('database')]["header_ref"])
+        url_list.append(detail_header_ref)
 
-            detail_header_ref = r.get(d[r.get('database')]["header_ref"])
-            url_list.append(detail_header_ref)
+        if not pageviews and r == best_match:
+          continue
 
-            answer = answer + f'<br><b><a target="{target}" rel="noopener noreferrer" href="{detail_header_ref}" style="text-decoration: underline">{detail_header}</a></b><br>'
-            sanitized_answer = sanitized_answer + f'\n{detail_header}:\n{detail_header_ref}\n'
+        answer = answer + f'<br><b><a target="{target}" rel="noopener noreferrer" href="{detail_header_ref}" style="text-decoration: underline">{detail_header}</a></b><br>'
+        sanitized_answer = sanitized_answer + f'\n{detail_header}:\n{detail_header_ref}\n'
 
     # Caso tenhamos a informação de seção do melhor match nós adicionamos ao final da resposta
     # o link da seção
@@ -249,58 +253,56 @@ def top_page_views(login, module, k=5):
     return best_match, article_results_ranked
 
 
-def get_model_answer(sentence, product, module, threshold, homolog):
-    # Fazemos a consulta na API do modelo
-    import requests
-    import time
+def get_model_answer(sentence, segment, product, module, threshold, homolog, cloud=False):	
+  # Fazemos a consulta na API do modelo	
+  import requests	
+  import time	
+  # Adicionamos o produto aos filtros da consulta	
+  filters = [{'filter_field': 'product', 'filter_value': product}]	
+  # Caso haja um módulo o adicionamos aos filtros da consulta	
+  if module:	
+    filters.append({'filter_field': 'module', 'filter_value': module})	
+    
+  if cloud:	
+    filters.append({'filter_field': 'tags', 'filter_value': ['artigo_tcloud']})	
+  elif segment == 'TOTVS Cloud':	
+    filters.append({'filter_field': 'tags', 'filter_value': ['artigo_tcloud'], 'filter_type': 'exclude'})	
+  # Pegamos até 30 artigos com score maior que o threshold para que possamos	
+  # fazer eventuais filtros depois	
+  data = {	
+      'query': sentence,	
+      'threshold_custom': {'tags': 80, 'tags-sinonimos': 80, 'all': threshold},	
+      'k': 30,	
+      'filters': filters,	
+      'response_columns': ['id', 'sentence', 'title', 'section_id', 'html_url', 'solution', 'sanitized_solution', 'tags', 'section_html_url', 'module', 'patch_version', 'patch_url', 'summary', 'situacao_requisicao', 'database']	
+  }	
+  #return data, 0	
+  if homolog:	
+    api_url = 'https://protheusassistant-carolinasupporthml.apps.carol.ai/query'	
+  else:	
+    api_url = 'https://protheusassistant-carolinasupportprd.apps.carol.ai/query'	
+      
+  # Enviamos a consulta para o modelo. Serão feitas até 3 tentativas de consulta a API,	
+  # se nenhuma tiver sucesso informa o usuário da instabilidade.	
+  retries = 3	
+  status_code = -1	
+  while (status_code != 200) and (retries > 0):	
+    response = requests.post(url=api_url, json=data)	
+    status_code = response.status_code	
+    retries -= 1	
+    if (status_code != 200): time.sleep(1)
 
-    # Adicionamos o produto aos filtros da consulta
-    filters = [{'filter_field': 'product', 'filter_value': product}]
-    # Caso haja um módulo o adicionamos aos filtros da consulta
-    if module:
-        filters.append({'filter_field': 'module', 'filter_value': module})
-
-    # Pegamos até 30 artigos com score maior que o threshold para que possamos
-    # fazer eventuais filtros depois
-    data = {
-        'query': sentence,
-        'threshold_custom': {'tags': 80, 'tags-sinonimos': 80, 'all': threshold},
-        'k': 30,
-        'filters': filters,
-        'response_columns': ['id', 'sentence', 'title', 'section_id', 'html_url', 'solution', 'sanitized_solution', 'tags', 'section_html_url', 'module', 'patch_version', 'patch_url', 'summary', 'situacao_requisicao', 'database']
-    }
-
-    #return data, 0
-    if homolog:
-      api_url = 'https://protheusassistant-carolinasupporthml.apps.carol.ai/query'
-    else:
-      api_url = 'https://protheusassistant-carolinasupportprd.apps.carol.ai/query'
-       
-    # Enviamos a consulta para o modelo. Serão feitas até 3 tentativas de consulta a API,
-    # se nenhuma tiver sucesso informa o usuário da instabilidade.
-    retries = 3
-    status_code = -1
-
-    while (status_code != 200) and (retries > 0):
-      response = requests.post(url=api_url, json=data)
-      status_code = response.status_code
-      retries -= 1
-      time.sleep(1)
-
-    # Caso haja um erro persistente
-    if response.status_code != 200:
-        return [], -1 * response.status_code
-
-    response = response.json()
+  # Caso haja um erro persistente	
+  if response.status_code != 200:	
+      return [], -1 * response.status_code	
+  response = response.json()	
         
-    if not response:
-        return [], -1
-
-    # Retornamos os artigos com maior score e o total de artigos encontramos acima do threshold fornecido
-    results = response.get('topk_results')
-    total_matches = response.get('total_matches')
-
-    return results, total_matches
+  if not response:	
+      return [], -1	
+  # Retornamos os artigos com maior score e o total de artigos encontramos acima do threshold fornecido	
+  results = response.get('topk_results')	
+  total_matches = response.get('total_matches')	
+  return results, total_matches
 
 
 def get_results(login, results, channel, k=3, segment=None):
@@ -382,6 +384,120 @@ def get_results(login, results, channel, k=3, segment=None):
     return answer, sanitized_answer, best_match, parameters
 
 
+def get_answer_from_sentence(login, username, debug, filtered_sentence, segment, product, module, related_products, related_modules, thresholds, channel, homolog, t_cloud):
+    # Enviamos a pergunta do usuário para o modelo com seus respectivos produto, módulo, bigrams e trigrams
+    # Nesta etapa usamos o menor threshold para obter o maior número de matches.
+    results_unified, total_matches_unified = get_model_answer(filtered_sentence, segment, product, module, thresholds[-1], homolog, t_cloud)
+
+    answer = ''
+    parameters = {}
+
+    # Se o numero de matches for menor que zero isso significa que houve erro na chamada da API, o status code será
+    # retornado negativo.
+    if total_matches_unified < 0:
+        total_matches_unified = abs(total_matches_unified)
+        answer = f'Desculpe, parece que tivemos alguma instabilidade em nosso sistema, vamos tentar novamente.'
+        #answer = f'Se o erro persistir, por favor informe ao suporte o erro HTTP {abs(total_matches_unified)}.'
+
+        # Retornamos a resposta para o usuário
+        return answer, parameters
+
+    if debug:
+        answer = f"search: {filtered_sentence}; product: {product}; module: {module}; threshold: {thresholds[-1]}.\n"
+        answer += f"results: {results_unified}\n."
+        return answer, parameters
+
+
+    # TDN habilitado apenas para plataformas por enquanto
+    tdn_prd =  ['Gestão de Pessoas (SIGAGPE)', 
+                'Financeiro (SIGAFIN)', 
+                'Estoque e Custos (SIGAEST)',
+                'Customizações (ADVPL)',
+                'Ativo Fixo (SIGAATF)',
+                'Contabilidade Gerencial (SIGACTB)',
+                'Compras (SIGACOM)',
+                'Gestão de Contratos (SIGAGCT)',
+                'Call Center (SIGATMK)',
+                'Customer Relationship Management (SIGACRM)',
+                'Faturamento (SIGAFAT)',
+                'Gestão de Projetos (SIGAPMS)',
+                'Departamentos (SIGAJURI)',
+                'Pré Faturamento de Serviços (SIGAPFS)',
+                'Avaliação e Pesquisa de Desempenho (SIGAAPD)',
+                'Medicina e Segurança do Trabalho (SIGAMDT)',
+                'Ponto Eletrônico (SIGAPON)',
+                'Recrutamento e Seleção de Pessoas (SIGARSP)',
+                'Treinamento (SIGATRM)',
+                'Gestão de Transporte de Passageiros (SIGAGTP)',
+                'Easy Export Control (SIGAEEC)',
+                'Easy Import Control (SIGAEIC)',
+                'Meu RH',
+                'Planejamento e Controle Orçamentário (SIGAPCO)', 
+                'Fast Analytics', 
+                'Gestão de Indicadores (SIGASGI)', 
+                'Smart Analytics', 
+                'Workflow (WORKFLOW)', 
+                'Documentos Eletrônicos Protheus', 
+                'Easy Drawback Control (SIGAEDC)', 
+                'Easy Financing (SIGAEFF)',
+        'Automação Fiscal',
+        'Arquivos Magnéticos (SIGAFIS)',
+        'Terceirização (SIGATEC)',
+        'Portal CP Human',
+                'Gestão de Contratos Públicos (SIGAGCP)', 
+                'Automação e Coleta de Dados (SIGAACD)',
+                'Easy Siscoserv (SIGAESS)']
+                
+    tdn_hml =  []
+
+    tdn_all = list(set(tdn_prd + tdn_hml))
+
+    # Enviamos a pergunta do usuário para o modelo mas agora com os módulos da família do módulo selecionado.
+    # Nesta etapa usamos o menor threshold para obter o maior número de matches.
+    related_modules_results = []
+    if related_modules:
+        related_modules_results, related_modules_total_matches = get_model_answer(filtered_sentence, segment, related_products, related_modules, thresholds[-1], homolog, t_cloud)
+
+    # Iteramos a lista de threshold, de forma a irmos diminuindo o threshold
+    # até obtermos uma resposta
+    threshold = thresholds[-1]
+    #for threshold in thresholds:
+    best_match = None
+
+    # Retirando artigos cujo modulo TDN ainda não foi homologado
+    # e filtrando apenas resultados acima do threshold
+    all_results = [result for result in results_unified if (result.get('score') >= threshold/100) and (result.get('database') != "TDN" or (result.get('module') in tdn_all))]
+
+    # Se nenhum artigo for retornado do KCS procura nos módulos relacionados
+    if not all_results:
+        all_results = [result for result in related_modules_results if (result.get('score') >= threshold/100) and (result.get('database') != "TDN" or (result.get('module') in tdn_all))]
+
+    # Caso nenhum artigo atenda o threshold de score
+    if all_results:
+    # Ordena a lista pela score
+        all_results.sort(key=lambda x: x.get('score'), reverse=True)
+    else:
+      return '', {}
+
+    #answer += f"Total de {len(all_results)} artigos resultantes.\n"
+
+    # Obtemos a resposta, o melhor match e suas respectivas informações
+    answer, san_answer, best_match, parms = get_results(login, all_results, segment=segment, channel=channel, k=3)
+
+    best_match_module = best_match.get('module')
+    if module and best_match_module != module:
+        if username:
+            name = f'{username}, n'
+        else:
+            name = 'N'
+        answer = f'{name}ão encontrei uma resposta no módulo {module}, mas talvez consiga ajuda-lo com artigos do módulo <b>{best_match_module}</b>.<br><br>' + answer
+
+    parameters.update(parms)
+
+    # Retornamos a resposta para o usuário
+    return answer, parameters
+
+
 def update_user_access(login, product, module, segment, question, email):
     # Salva o produto, módulo, horário atual e e-mail da consulta em um data model.
     from pycarol import Staging
@@ -426,71 +542,15 @@ def main():
     from fuzzywuzzy import fuzz
     from unidecode import unidecode
 
-    # Frases para mapear intenções relacionadas com "falar com analista"
-    analista_questions =  [
-            'falar com analista',
-            'quero falar com um analista',
-            'falar com atendente',
-            'quero falar com atendente',
-            'falar com suporte',
-            'quero falar com suporte'
-            'atendimento humano',
-            'abrir ticket',
-            'Como abrir chamado',
-            'quero abrir chamado',
-            'chamado',
-            'abrir chamado a totvs',
-            'abrir chamado',
-            'abrir chamado modulo faturamento',
-            'abrir chamado modulo rh',
-            'abrir chamado modulo estoque',
-            'atendente humano']
     # Opções de respostas para quando o usuário enviar apenas uma palavra na pergunta.
     respostas_uma_palavra = ['Poderia detalhar um pouco mais sua dúvida?',
              'Me conte com mais detalhes a sua dúvida.',
              'Poderia digitar sua dúvida com mais de uma palavra?',
              'Para que eu possa lhe ajudar, preciso que digite mais de uma palavra']
-    # Opções de respostas para quando o usuário falar algo relacionado com "falar com analista"
-    resposta_analista = ['Estou aqui para te ajudar. Consulte sobre um produto e digite sua dúvida.',
-                     'Se você me contar o que precisa, acho que consigo te ajudar.',
-                     'Posso tentar ajudar você. Consulte sobre um produto e digite sua dúvida.']
-    
-    # Frases para mapear intenções relacionadas com "falar com Administrativo"
-    cst_questions =  [
-            'falar com administrativo',
-            'falar com cst',
-            'consultar contrato',
-            'consultar boleto',
-            'atualizar boleto',
-            'administrativo']
-    # Opções de respostas para quando o usuário falar algo relacionado com "falar com administrativo"
-    resposta_cst = ['Por enquanto eu consigo ajudar com dúvidas sobre o seu produto.',
-                     'Para assuntos administrativos consulte o Centro de Serviço da TOTVS.']
 
-    # Frases para mapear intenções relacionadas com "falar com Cloud"
-    cloud_questions =  [
-            'falar com cloud',
-            'cloud',
-            'assuntos do cloud',
-            'atendimento cloud',
-            'protheus cloud']
-    # Opções de respostas para quando o usuário falar algo relacionado com "falar com Cloud"
-    resposta_cloud = ['Desculpe, eu ainda não consigo te ajudar em assuntos sobre Cloud, mas já estou me preparando.<br>Agora você pode tirar dúvidas relacionadas ao seu produto.']
-
-    # Frases para mapear intenções relacionadas com consulta de tickets
-    ticket_questions = ['consultar chamado', 'consultar ticket', 'consultar solicitação']
-
-    eventos_suporte_protheus_questions = ['Onde encontrar os eventos do suporte?', 'Onde posso encontrar as inovações do suporte?',
-      'inovações do suporte', 'eventos do suporte', 'encontrar eventos do suporte', 'encontrar inovações do suporte',
-      'encontrar inovação do suporte', 'encontrar evento do suporte', 'evento suporte', 'Onde encontrar eventos do suporte?',
-      'Onde encontrar inovações do suporte?', 'Temos alguma página de informações do suporte?', 'Onde encontrar os comunicados do suporte?'
-]
-    # Frases para mapear o evento tira duvidas
-    evento_tira_duvidas = ['Evento Tira duvida','Evento Tira duvidas']
-    #resposta_ETD = ['Olá, a Totvs tem o prazer de apresentar a página Protheus Informa:<br>https://suporteprotheusinforma.totvs.com/']
-    
     # Pegamos dos parâmetros a pergunta do usuário, o módulo e o produto selecionados.
-    question = parameters.get('question')
+    question = parameters.pop('question', None)
+    subject = parameters.get('subject')
     module = parameters.get('module')
     product = parameters.get('product')
     segment = parameters.get('segment')
@@ -519,40 +579,18 @@ def main():
     custom_log = get_custom_log(parameters)
     
     # Cria uma variável temporária que é a versão em minúsculo e sem caracteres especiais da questão do usuário.
+    if not question:
+      return textResponse('Desculpe, não consegui entender sua pergunta.', jumpTo='Duvida')
+
     question_tmp = unidecode(question.lower())
-    # Valida se o usuário está perguntando algo relacionado a "falar com analista".
-    # Em caso positivo respondemos que o assistente pode tentar ajudá-lo primeiro.
-    matched_analist_questions = [analist_question for analist_question in analista_questions if fuzz.ratio(question_tmp, unidecode(analist_question.lower())) >= 90]
-    if matched_analist_questions:
-      return textResponse(random.choice(resposta_analista), jumpTo='Consulta BC', customLog=custom_log)
+    jump_to = None
 
-    matched_cst_questions = [cst_question for cst_question in cst_questions if fuzz.ratio(question_tmp, unidecode(cst_question.lower())) >= 90]
-    if matched_cst_questions:
-      return textResponse(random.choice(resposta_cst), jumpTo='Consulta BC', customLog=custom_log)
-
-    matched_cloud_questions = [cloud_question for cloud_question in cloud_questions if fuzz.ratio(question_tmp, unidecode(cloud_question.lower())) >= 90]
-    if matched_cloud_questions:
-      return textResponse(random.choice(resposta_cloud), jumpTo='Consulta BC', customLog=custom_log)
-
-    matched_ticket_questions = [ticket_question for ticket_question in ticket_questions if fuzz.ratio(question_tmp, unidecode(ticket_question.lower())) >= 90]
-    if re.search('[0-9]{7,}', question_tmp) or matched_ticket_questions:
-      return textResponse('Entendi que você está querendo consultar uma solicitação. Vou te levar para o menu de seleção e você poderá selecionar a opção de "Consultar solicitação".', jumpTo='Identificar assunto')
-
-    matched_eventos_protheus_questions = [eventos_protheus_question for eventos_protheus_question in eventos_suporte_protheus_questions if fuzz.ratio(question_tmp, unidecode(eventos_protheus_question.lower())) >= 90]
-    if matched_eventos_protheus_questions:
-      return textResponse('Você pode encontrar informações sobre nossos eventos na página:<br>https://suporteprotheusinforma.totvs.com/', jumpTo='Consulta BC', customLog=custom_log)
-
-    ## evento tira duvida
-    matched_evento_tira_duvida = [evento_tira_duvida for evento_tira_duvida in evento_tira_duvidas if fuzz.ratio(question_tmp, unidecode(evento_tira_duvida.lower())) >= 90]
-    if matched_evento_tira_duvida:
-      return textResponse('Olá, a Totvs tem o prazer de apresentar a página Protheus Informa:<br>https://suporteprotheusinforma.totvs.com/', jumpTo='Consulta BC', customLog=custom_log)
-    
     if 'issue' in question_tmp:
       if username:
         name = f'{username}, i'
       else:
         name = 'I'
-      return textResponse('{name}nfelizmente não sei sobre as atividades do desenvolvimento, contate o PO deste produto.', jumpTo='Consulta BC', customLog=custom_log)
+      return textResponse('{name}nfelizmente não sei sobre as atividades do desenvolvimento, contate o PO deste produto.', jumpTo='Pergunta central', customLog=custom_log)
 
     # Só enviamos a pergunta do usuário para o modelo caso o módulo e o produto tenham sido informados.  
     if question and module and product:
@@ -561,11 +599,7 @@ def main():
       # Valida se o usuário enviou menos de uma palavra.
       # Em caso positivo pedimos para que eles usem mais palavras para evitar buscar muito abrangentes.
       if len(word_tokens) < 2:
-        return textResponse(random.choice(respostas_uma_palavra), jumpTo='Consulta BC', customLog=custom_log)
-      #if question.lower() == 'sim':
-      #  return textResponse('Perfeito. Agora preciso que você digite sua dúvida.', jumpTo='Consulta BC', customLog=custom_log)
-      #if module.lower() == 'pep 2.0 web':
-      # product = 'Soluções Saúde'
+        return textResponse(random.choice(respostas_uma_palavra), jumpTo=None, customLog=custom_log)
 
       # Fazemos login nesse ambiente da Carol usando o pyCarol
       login = Carol(domain='protheusassistant',
@@ -584,7 +618,7 @@ def main():
       # nós retornamos os 5 artigos mais consultados daquele módulo baseado nas métricas do Google Analytics.
       if module_original and question.lower() == module_original.lower():
         best_match, pv_results = top_page_views(login, module_original)
-        for item in pv_results: item.update({"database":"elasticsearch"})
+        for item in pv_results: item.update({"source":"elasticsearch"})
 
         # Obtemos a resposta, o melhor match e suas respectivas informações
         answer, san_answer, best_match, parms = get_results(login, pv_results, segment=segment, channel=channel, k=5)
@@ -611,7 +645,7 @@ def main():
             related_products_resp = query.named(named_query = 'get_products_by_modules', json_query=params).go().results
             if related_products_resp:
               related_products.extend({related_product.get('product').strip() for related_product in related_products_resp})
-
+          
       # Se o módulo for do produto Framework (Linha RM) ou Framework (Linha Datasul) usar
       # todos os módulos do produto na busca.
       if module == 'TOTVS Educacional' or module == 'Educacional' or product == 'Educacional':
@@ -644,122 +678,33 @@ def main():
           if homolog:
             thresholds = [70, 60, 50]
 
-      # Enviamos a pergunta do usuário para o modelo com seus respectivos produto, módulo, bigrams e trigrams
-      # Nesta etapa usamos o menor threshold para obter o maior número de matches.
-      results_unified, total_matches_unified = get_model_answer(filtered_sentence, product, module, thresholds[-1], homolog)
+      t_cloud = False
+      cloud_products = parameters.get('cloud_products')
+      if segment == 'TOTVS Cloud' and cloud_products and any(cloud_product.lower() in product.lower() for cloud_product in cloud_products):
+        t_cloud = True
 
-      # Se o numero de matches for menor que zero isso significa que houve erro na chamada da API, o status code será
-      # retornado negativo.
-      if total_matches_unified < 0:
-        total_matches_unified = abs(total_matches_unified)
-        jump_to = 'Consulta BC'
-        answer = f'Desculpe, parece que tivemos alguma instabilidade em nosso sistema, vamos tentar novamente.'
-        #answer = f'Se o erro persistir, por favor informe ao suporte o erro HTTP {abs(total_matches_unified)}.'
-        
-        # Retornamos a resposta para o usuário
-        return textResponse(f'{answer}', jumpTo='Consulta BC', customLog=custom_log)
-
-      if debug:
-        answer = f"search: {filtered_sentence}; product: {product}; module: {module}; threshold: {thresholds[-1]}.\n"
-        answer += f"results: {results_unified}\n."
-        return textResponse(answer)
-
-
-      # TDN habilitado apenas para plataformas por enquanto
-      tdn_prd =  ['Gestão de Pessoas (SIGAGPE)', 
-				  'Financeiro (SIGAFIN)', 
-				  'Estoque e Custos (SIGAEST)',
-				  'Customizações (ADVPL)',
-				  'Ativo Fixo (SIGAATF)',
-				  'Contabilidade Gerencial (SIGACTB)',
-				  'Compras (SIGACOM)',
-				  'Gestão de Contratos (SIGAGCT)',
-				  'Call Center (SIGATMK)',
-				  'Customer Relationship Management (SIGACRM)',
-				  'Faturamento (SIGAFAT)',
-				  'Gestão de Projetos (SIGAPMS)',
-				  'Departamentos (SIGAJURI)',
-				  'Pré Faturamento de Serviços (SIGAPFS)',
-				  'Avaliação e Pesquisa de Desempenho (SIGAAPD)',
-				  'Medicina e Segurança do Trabalho (SIGAMDT)',
-				  'Ponto Eletrônico (SIGAPON)',
-				  'Recrutamento e Seleção de Pessoas (SIGARSP)',
-				  'Treinamento (SIGATRM)',
-				  'Gestão de Transporte de Passageiros (SIGAGTP)',
-				  'Easy Export Control (SIGAEEC)',
-				  'Easy Import Control (SIGAEIC)',
-				  'Meu RH',
-				  'Planejamento e Controle Orçamentário (SIGAPCO)', 
-				  'Fast Analytics', 
-				  'Gestão de Indicadores (SIGASGI)', 
-				  'Smart Analytics', 
-				  'Workflow (WORKFLOW)', 
-				  'Documentos Eletrônicos Protheus', 
-				  'Easy Drawback Control (SIGAEDC)', 
-				  'Easy Financing (SIGAEFF)',
-          'Automação Fiscal',
-          'Arquivos Magnéticos (SIGAFIS)',
-          'Terceirização (SIGATEC)',
-          'Portal CP Human',
-				  'Gestão de Contratos Públicos (SIGAGCP)', 
-				  'Automação e Coleta de Dados (SIGAACD)',
-				  'Easy Siscoserv (SIGAESS)']
-				  
-      tdn_hml =  []
-
-      tdn_all = list(set(tdn_prd + tdn_hml))
-
-      # Enviamos a pergunta do usuário para o modelo mas agora com os módulos da família do módulo selecionado.
-      # Nesta etapa usamos o menor threshold para obter o maior número de matches.
-      related_modules_results = []
-      if related_modules:
-        related_modules_results, related_modules_total_matches = get_model_answer(filtered_sentence, related_products, related_modules, thresholds[-1], homolog)
-
-      # Iteramos a lista de threshold, de forma a irmos diminuindo o threshold
-      # até obtermos uma resposta
-      answer = ""
-      threshold = thresholds[-1]
-      #for threshold in thresholds:
-      best_match = None
-
-      # Retirando artigos cujo modulo TDN ainda não foi homologado
-      # e filtrando apenas resultados acima do threshold
-      all_results = [result for result in results_unified if (result.get('score') >= threshold/100) and (result.get('database') != "TDN" or (result.get('module') in tdn_all))]
-
-      # Se nenhum artigo for retornado do KCS procura nos módulos relacionados
-      if not all_results:
-        all_results = [result for result in related_modules_results if (result.get('score') >= threshold/100) and (result.get('database') != "TDN" or (result.get('module') in tdn_all))]
-
-      # Caso nenhum artigo atenda o threshold de score
-      if all_results:
-        # Ordena a lista pela score
-        all_results.sort(key=lambda x: x.get('score'), reverse=True)
-
-        #answer += f"Total de {len(all_results)} artigos resultantes.\n"
-
-        # Obtemos a resposta, o melhor match e suas respectivas informações
-        answer, san_answer, best_match, parms = get_results(login, all_results, segment=segment, channel=channel, k=3)
-
-        best_match_module = best_match.get('module')
-        if module and best_match_module != module:
-          if username:
-            name = f'{username}, n'
-          else:
-            name = 'N'
-          answer = f'{name}ão encontrei uma resposta no módulo {module}, mas talvez consiga ajuda-lo com artigos do módulo <b>{best_match_module}</b>.<br><br>' + answer
-
+      answer, parms = get_answer_from_sentence(login, username, debug, filtered_sentence, segment, product, module, related_products, related_modules, thresholds, channel, homolog, t_cloud)
+      
+      if answer:
         parameters.update(parms)
         custom_log = get_custom_log(parameters)
-        
+      
         # Retornamos a resposta para o usuário
         return textResponse(f'{answer}', jumpTo='Criar ticket de log', customLog=custom_log)
-
-      # Caso nenhuma resposta satisfaça os thresholds.Fallback: Elasticsearch
-      # FALLBACK
 
       # Caso nenhum artigo tenha sido retornado pela busca do usuário nós damos mais 2 tentativas
       # para eles tentarem refazer a consulta usando outras palavras antes de enviá-los para o fluxo
       # de transbordo ou abertura de ticket.
+
+      if t_cloud:
+        answer, parms = get_answer_from_sentence(login, username, debug, filtered_sentence, segment, product, module, related_products, related_modules, thresholds, channel, homolog, t_cloud=False)
+
+        if answer:
+          parameters.update(parms)
+          custom_log = get_custom_log(parameters)
+        
+          # Retornamos a resposta para o usuário
+          return textResponse(f'{answer}', jumpTo='Criar ticket de log', customLog=custom_log)
 
       # Lê a quantidade de tentativas que o usuário já fez. Caso seja a primeira tentativa o valor padrão é 0.
       attempts = parameters.get('attempts', 0)
@@ -777,7 +722,6 @@ def main():
       # tentarem refazer a consulta usando outras palavras
       if attempts < 3:
         answer += ' Você poderia digitar sua dúvida com outras palavras?'
-        jump_to = 'Consulta BC'
       # Caso as 3 tentativas já tenham sido feitas levamos os usuários para o fluxo
       # de transbordo ou abertura de ticket
       else:
