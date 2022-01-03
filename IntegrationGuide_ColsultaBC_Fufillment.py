@@ -278,16 +278,21 @@ def get_model_answer(sentence, segment, product, module, threshold, homolog, clo
   }	
   #return data, 0	
   if homolog:	
-    api_url = 'https://protheusassistant-carolinasupporthml.apps.carol.ai/query'	
+    api_url = 'https://protheusassistant-carolinasupporthml.apps.carol.ai/query'		
   else:	
     api_url = 'https://protheusassistant-carolinasupportprd.apps.carol.ai/query'	
-      
+
+  # Composing authentication header
+  h = {"Content-Type": "application/json", 
+        "X-Auth-Key": secrets.get('carol_authentication_key'), 
+        "X-Auth-ConnectorId": secrets.get('carol_connector_id')}
+
   # Enviamos a consulta para o modelo. Serão feitas até 3 tentativas de consulta a API,	
   # se nenhuma tiver sucesso informa o usuário da instabilidade.	
   retries = 3	
   status_code = -1	
   while (status_code != 200) and (retries > 0):	
-    response = requests.post(url=api_url, json=data)	
+    response = requests.post(url=api_url, json=data, headers=h)	
     status_code = response.status_code	
     retries -= 1	
     if (status_code != 200): time.sleep(1)
