@@ -272,7 +272,7 @@ def get_model_answer(sentence, segment, product, module, threshold, homolog, clo
   data = {	
       'query': sentence,	
       'threshold_custom': {'tags': 80, 'tags-sinonimos': 80, 'all': threshold},	
-      'k': 30,	
+      'k': 5,	
       'filters': filters,	
       'response_columns': ['id', 'sentence', 'title', 'section_id', 'html_url', 'solution', 'sanitized_solution', 'tags', 'section_html_url', 'module', 'patch_version', 'patch_url', 'summary', 'situacao_requisicao', 'database']	
   }	
@@ -282,10 +282,19 @@ def get_model_answer(sentence, segment, product, module, threshold, homolog, clo
   else:	
     api_url = 'https://protheusassistant-carolinasupportprd.apps.carol.ai/query'	
 
+
+  #ckey = secrets.get('carol_authentication_key')
+  #cconid = secrets.get('carol_connector_id')
+
+  # Setting credentials hard coded for now to avoid 
+  # failures on automated test services
+  ckey = "c58ca6159f674a5e8109c79b37715563"
+  cconid = "af689897ca3042dca6abe01a8f722edb"
+
   # Composing authentication header
   h = {"Content-Type": "application/json", 
-        "X-Auth-Key": secrets.get('carol_authentication_key'), 
-        "X-Auth-ConnectorId": secrets.get('carol_connector_id')}
+        "X-Auth-Key": ckey, 
+        "X-Auth-ConnectorId": cconid}
 
   # Enviamos a consulta para o modelo. Serão feitas até 3 tentativas de consulta a API,	
   # se nenhuma tiver sucesso informa o usuário da instabilidade.	
@@ -400,9 +409,8 @@ def get_answer_from_sentence(login, username, debug, filtered_sentence, segment,
     # Se o numero de matches for menor que zero isso significa que houve erro na chamada da API, o status code será
     # retornado negativo.
     if total_matches_unified < 0:
-        total_matches_unified = abs(total_matches_unified)
-        answer = f'Desculpe, parece que tivemos alguma instabilidade em nosso sistema, vamos tentar novamente.'
-        #answer = f'Se o erro persistir, por favor informe ao suporte o erro HTTP {abs(total_matches_unified)}.'
+        http_error = abs(total_matches_unified)
+        answer = f'Desculpe, parece que tivemos alguma instabilidade em nosso sistema (HTTP{http_error}), vamos tentar novamente.'
 
         # Retornamos a resposta para o usuário
         return answer, parameters
@@ -656,7 +664,7 @@ def main():
       if module == 'TOTVS Educacional' or module == 'Educacional' or product == 'Educacional':
         product = ['App TOTVS EduConnect', 'Educacional']
         module = None
-      elif module in ['Framework', 'Framework e Tecnologia'] or product in ['Gestão de Imóveis', 'Obras e Projetos', 'TOTVS Aprovações e Atendimento']:
+      elif module in ['Framework', 'Framework e Tecnologia', 'TOTVS CRM'] or product in ['Gestão de Imóveis', 'Obras e Projetos', 'TOTVS Aprovações e Atendimento']:
         module = None
 
       # Salvamos a pergunta do usuário nos parâmetros para usar esta informações em outro nó.  
