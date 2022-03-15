@@ -326,13 +326,61 @@ def get_results(login, results, channel, k=3, segment=None):
     # avaliando se é necessário usar as métricas do Analytics
     import re
 
+    # Usando o analytics como critério de desempate
+    # ---------------------------------------------
+    if segment == 'Plataformas':
+
+        # Organiza os artigos em buckets com o mesmo score
+        same_score_buckets = []
+
+        # agrupa os artigos de mesmo score para depois coloca-los nos buckets
+        same_score = []
+
+        # Primeiro separa todos os artigos empatados nas primeiras posicoes
+        for r in results:
+
+            # Se o bucket ja estiver inicializado
+            if same_score:
+
+                # Se o score for igual adiciona o artigo ao mesmo bucket
+                if same_score[-1].get('score') == r.get('score'):
+                    same_score.append(r)
+
+                # Do contrário fecha o bucket anterior e inicia um novo
+                else:
+                    same_score_buckets.append(same_score)
+                    same_score = [r]
+
+            # Senão o inicializa
+            else:
+                same_score.append(r)
+
+        # Adiciona o último bucket
+        same_score_buckets.append(same_score)
+
+        # Sinaliza que já foi aplicado um desempate
+        empate_flag = False
+
+        # Ordena cada um dos buckets pelo analytics
+        results = []
+        for bucket in same_score_buckets:
+
+            # Se houver empate entre 2 ou mais artigos...
+            if len(bucket) > 1:
+                results += orderby_page_views(login, article_results=bucket)
+                empate_flag = True
+
+            # Caso não haja empate
+            else:
+                results += bucket
+
     # Caso houverem muitos resultados para uma busca KCS, seleciona os artigos mais vistos
     # ATENÇÂO: Quando temos muitos artigos os documentos TDN são descartados, pois ainda não temos
     # page views para estes artigos.
     pv=False
     higher_than_95 = [r for r in results if r.get('score') > 0.95]
-    #if (len(results) > 10) and (not higher_than_95 or len(higher_than_95) > 5):
-    if (len(results) > 5) and (segment == 'Plataformas') and (len(higher_than_95) > 5):
+
+    if (not empate_flag) and (len(results) > 5) and (segment == 'Plataformas') and (len(higher_than_95) > 5):
         results = orderby_page_views(login, article_results=results)
         pv=True
         # Para o caso de page views o cliente quer ver os top 5
