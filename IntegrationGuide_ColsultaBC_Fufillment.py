@@ -65,7 +65,7 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
     d = field_mapping
 
     # Inicializando variáveis pra evitar que o processo quebre caso a lista de results seja vazia
-    sanitized_answer = answer = ""
+    mobile_answer = answer = ""
     
     # Caso o canal não seja o portal não podemos abrir uma nova aba no navegador.
     target = '_blank' if channel != 'portal' else '_placeholder'
@@ -100,6 +100,8 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
 
         # Adicionamos ao início da resposta o título do artigo de melhor match com sua respectiva URL de acesso
         answer = f'<br><b><a target="{target}" rel="noopener noreferrer" href="{header_ref}" style="text-decoration: underline"><strong>{header}</strong></a></b><br>' + content
+        # Na versão simplificada da resposta adicionamos somente O titulo do aritgo encontrado e a URL em seguida.
+        mobile_answer = f"Principal conteúdo encontrado: {header} ({header_ref})"
         
         # Caso o artigo com maior score seja do TDN adicionamos o link para o patch, caso disponível
         if best_match.get('database') == "TDN":
@@ -124,8 +126,7 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
                     patch_links.append(f'<a target="{target}" rel="noopener noreferrer" href="{patches_d[kv]}" style="text-decoration: underline">{v}</a>')
 
                 answer += f'<br>Selecione a versão para baixar pacote de atualização:' + ", ".join(patch_links)
-        
-        sanitized_answer = sancontent
+                mobile_answer += "\nNota: Patch de atualização disponível para esse problema, consulte via web"
 
     # Artigos secundários: Os demais artigos são exibidos de maneira resumida, só título e url, sem detalhes.
     url_list = []
@@ -133,14 +134,15 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
         if not pageviews:
             #results.pop(results.index(best_match))
             answer = answer + '<br><br>Aqui tenho outros artigos que podem ajudar:'
-            sanitized_answer = sanitized_answer + '\n\n\nAqui tenho outros artigos que podem ajudar:'
+            mobile_answer = mobile_answer + '\n\nAqui tenho outros artigos que podem ajudar:'
             tmp_results = results[:k]
 
         else:
             answer = 'Sua busca foi abrangente e retornou muitos resultados.'
             answer += f'<br>Aqui estão os {len(results)} artigos relacionados à sua pergunta que foram mais consultados pelos nossos clientes.'
-            sanitized_answer = answer
+            mobile_answer = f'Sua busca foi abrangente, aqui estão os {len(results)} artigos mais consultados sobre o tema:'
             tmp_results = results[:5]
+
     else:
       tmp_results = results
 
@@ -159,7 +161,7 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
           continue
 
         answer = answer + f'<br><b><a target="{target}" rel="noopener noreferrer" href="{detail_header_ref}" style="text-decoration: underline">{detail_header}</a></b><br>'
-        sanitized_answer = sanitized_answer + f'\n{detail_header}:\n{detail_header_ref}\n'
+        mobile_answer = mobile_answer + f'\n{detail_header}:\n{detail_header_ref}\n'
 
     # Caso tenhamos a informação de seção do melhor match nós adicionamos ao final da resposta
     # o link da seção
@@ -174,9 +176,9 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
 
         answer += f'<br>Caso o artigo que você procura não tenha sido apresentado acima você ainda pode procurá-lo aqui na seção:'
         answer += f'<br><b><a target="{target}" rel="noopener noreferrer" href="{section_url}" style="text-decoration: underline">{section}</a></b><br>'
-        sanitized_answer += f'<br>Caso o artigo que você procura não tenha sido apresentado acima você ainda pode procurá-lo aqui na seção:\n{section_url}'
+        mobile_answer += f'Você também pode navegar pela seção para mais artigos:\n{section_url}'
 
-    return answer, sanitized_answer, url_list, header, header_ref, labels
+    return answer, mobile_answer, url_list, header, header_ref, labels
     
 
 def orderby_page_views(login, article_results, k=5):
@@ -272,7 +274,7 @@ def get_model_answer(sentence, segment, product, module, threshold, homolog, clo
   data = {	
       'query': sentence,	
       'threshold_custom': {'tags': 80, 'tags-sinonimos': 80, 'all': threshold},	
-      'k': 30,	
+      'k': 5,	
       'filters': filters,	
       'response_columns': ['id', 'sentence', 'title', 'section_id', 'html_url', 'solution', 'sanitized_solution', 'tags', 'section_html_url', 'module', 'patch_version', 'patch_url', 'summary', 'situacao_requisicao', 'database']	
   }	
@@ -282,10 +284,19 @@ def get_model_answer(sentence, segment, product, module, threshold, homolog, clo
   else:	
     api_url = 'https://protheusassistant-carolinasupportprd.apps.carol.ai/query'	
 
+
+  #ckey = secrets.get('carol_authentication_key')
+  #cconid = secrets.get('carol_connector_id')
+
+  # Setting credentials hard coded for now to avoid 
+  # failures on automated test services
+  ckey = "c58ca6159f674a5e8109c79b37715563"
+  cconid = "af689897ca3042dca6abe01a8f722edb"
+
   # Composing authentication header
   h = {"Content-Type": "application/json", 
-        "X-Auth-Key": secrets.get('carol_authentication_key'), 
-        "X-Auth-ConnectorId": secrets.get('carol_connector_id')}
+        "X-Auth-Key": ckey, 
+        "X-Auth-ConnectorId": cconid}
 
   # Enviamos a consulta para o modelo. Serão feitas até 3 tentativas de consulta a API,	
   # se nenhuma tiver sucesso informa o usuário da instabilidade.	
@@ -364,7 +375,7 @@ def get_results(login, results, channel, k=3, segment=None):
                               "section_url":""}}
 
     # Montamos a resposta e resposta limpa baseado nos resultados
-    answer, sanitized_answer, url_list, title_best_match, url_best_match, labels = get_answer(best_match, results, channel=channel, field_mapping=field_mapping, k=k, pageviews=pv)
+    answer, mobile_answer, url_list, title_best_match, url_best_match, labels = get_answer(best_match, results, channel=channel, field_mapping=field_mapping, k=k, pageviews=pv)
 
     # Guardando os parâmetros para debug
     parameters = {}
@@ -373,7 +384,7 @@ def get_results(login, results, channel, k=3, segment=None):
     parameters['labels'] = labels if labels else []
     parameters['title'] = title_best_match
     parameters['last_url'] = url_best_match
-    parameters['last_answer'] = sanitized_answer
+    parameters['last_answer'] = mobile_answer
     #parameters['module'] = best_match.get(field_mapping[best_match.get('source')]["module"])
     parameters['source'] = 'modelo'
     parameters['analytics'] = pv
@@ -386,7 +397,7 @@ def get_results(login, results, channel, k=3, segment=None):
         if url:
             parameters[f'url_{i+1}'] = url
 
-    return answer, sanitized_answer, best_match, parameters
+    return answer, mobile_answer, best_match, parameters
 
 
 def get_answer_from_sentence(login, username, debug, filtered_sentence, segment, product, module, related_products, related_modules, thresholds, channel, homolog, t_cloud):
@@ -395,22 +406,24 @@ def get_answer_from_sentence(login, username, debug, filtered_sentence, segment,
     results_unified, total_matches_unified = get_model_answer(filtered_sentence, segment, product, module, thresholds[-1], homolog, t_cloud)
 
     answer = ''
+    mobile_answer = ''
     parameters = {}
 
     # Se o numero de matches for menor que zero isso significa que houve erro na chamada da API, o status code será
     # retornado negativo.
     if total_matches_unified < 0:
-        total_matches_unified = abs(total_matches_unified)
-        answer = f'Desculpe, parece que tivemos alguma instabilidade em nosso sistema, vamos tentar novamente.'
-        #answer = f'Se o erro persistir, por favor informe ao suporte o erro HTTP {abs(total_matches_unified)}.'
+        http_error = abs(total_matches_unified)
+        answer = f'Desculpe, parece que tivemos alguma instabilidade em nosso sistema (HTTP{http_error}), vamos tentar novamente.'
+        mobile_answer = answer
 
         # Retornamos a resposta para o usuário
-        return answer, parameters
+        return answer, mobile_answer, parameters
 
     if debug:
         answer = f"search: {filtered_sentence}; product: {product}; module: {module}; threshold: {thresholds[-1]}.\n"
         answer += f"results: {results_unified}\n."
-        return answer, parameters
+        mobile_answer = answer
+        return answer, mobile_answer, parameters
 
 
     # TDN habilitado apenas para plataformas por enquanto
@@ -445,10 +458,10 @@ def get_answer_from_sentence(login, username, debug, filtered_sentence, segment,
                 'Documentos Eletrônicos Protheus', 
                 'Easy Drawback Control (SIGAEDC)', 
                 'Easy Financing (SIGAEFF)',
-        'Automação Fiscal',
-        'Arquivos Magnéticos (SIGAFIS)',
-        'Terceirização (SIGATEC)',
-        'Portal CP Human',
+                'Automação Fiscal',
+                'Arquivos Magnéticos (SIGAFIS)',
+                'Terceirização (SIGATEC)',
+                'Portal CP Human',
                 'Gestão de Contratos Públicos (SIGAGCP)', 
                 'Automação e Coleta de Dados (SIGAACD)',
                 'Easy Siscoserv (SIGAESS)']
@@ -482,12 +495,12 @@ def get_answer_from_sentence(login, username, debug, filtered_sentence, segment,
     # Ordena a lista pela score
         all_results.sort(key=lambda x: x.get('score'), reverse=True)
     else:
-      return '', {}
+      return '', '', {}
 
     #answer += f"Total de {len(all_results)} artigos resultantes.\n"
 
     # Obtemos a resposta, o melhor match e suas respectivas informações
-    answer, san_answer, best_match, parms = get_results(login, all_results, segment=segment, channel=channel, k=3)
+    answer, mobile_answer, best_match, parms = get_results(login, all_results, segment=segment, channel=channel, k=3)
 
     best_match_module = best_match.get('module')
     if module and best_match_module != module:
@@ -496,11 +509,12 @@ def get_answer_from_sentence(login, username, debug, filtered_sentence, segment,
         else:
             name = 'N'
         answer = f'{name}ão encontrei uma resposta no módulo {module}, mas talvez consiga ajuda-lo com artigos do módulo <b>{best_match_module}</b>.<br><br>' + answer
+        mobile_answer = f'{name}ão encontrei uma resposta no módulo {module}, mas talvez consiga ajuda-lo com artigos do módulo <b>{best_match_module}' + mobile_answer
 
     parameters.update(parms)
 
     # Retornamos a resposta para o usuário
-    return answer, parameters
+    return answer, mobile_answer, parameters
 
 
 def update_user_access(login, product, module, segment, question, email):
@@ -626,11 +640,11 @@ def main():
         for item in pv_results: item.update({"source":"elasticsearch"})
 
         # Obtemos a resposta, o melhor match e suas respectivas informações
-        answer, san_answer, best_match, parms = get_results(login, pv_results, segment=segment, channel=channel, k=5)
+        answer, mobile_answer, best_match, parms = get_results(login, pv_results, segment=segment, channel=channel, k=5)
         parameters.update(parms)
         custom_log = get_custom_log(parameters)
 
-        return textResponse(f'{answer}', jumpTo='Criar ticket de log', customLog=custom_log)
+        return textResponse(f'{answer}', shortResponse=mobile_answer, jumpTo='Criar ticket de log', customLog=custom_log)
 
       # TODO: Família de módulos
       related_modules = []
@@ -656,7 +670,7 @@ def main():
       if module == 'TOTVS Educacional' or module == 'Educacional' or product == 'Educacional':
         product = ['App TOTVS EduConnect', 'Educacional']
         module = None
-      elif module in ['Framework', 'Framework e Tecnologia'] or product in ['Gestão de Imóveis', 'Obras e Projetos', 'TOTVS Aprovações e Atendimento']:
+      elif module in ['Framework', 'Framework e Tecnologia', 'TOTVS CRM'] or product in ['Gestão de Imóveis', 'Obras e Projetos', 'TOTVS Aprovações e Atendimento']:
         module = None
 
       # Salvamos a pergunta do usuário nos parâmetros para usar esta informações em outro nó.  
@@ -688,28 +702,28 @@ def main():
       if segment == 'TOTVS Cloud' and cloud_products and any(cloud_product.lower() in product.lower() for cloud_product in cloud_products):
         t_cloud = True
 
-      answer, parms = get_answer_from_sentence(login, username, debug, filtered_sentence, segment, product, module, related_products, related_modules, thresholds, channel, homolog, t_cloud)
+      answer, mobile_answer, parms = get_answer_from_sentence(login, username, debug, filtered_sentence, segment, product, module, related_products, related_modules, thresholds, channel, homolog, t_cloud)
       
       if answer:
         parameters.update(parms)
         custom_log = get_custom_log(parameters)
       
         # Retornamos a resposta para o usuário
-        return textResponse(f'{answer}', jumpTo='Criar ticket de log', customLog=custom_log)
+        return textResponse(f'{answer}', shortResponse=mobile_answer, jumpTo='Criar ticket de log', customLog=custom_log)
 
       # Caso nenhum artigo tenha sido retornado pela busca do usuário nós damos mais 2 tentativas
       # para eles tentarem refazer a consulta usando outras palavras antes de enviá-los para o fluxo
       # de transbordo ou abertura de ticket.
 
       if t_cloud:
-        answer, parms = get_answer_from_sentence(login, username, debug, filtered_sentence, segment, product, module, related_products, related_modules, thresholds, channel, homolog, t_cloud=False)
+        answer, mobile_answer, parms = get_answer_from_sentence(login, username, debug, filtered_sentence, segment, product, module, related_products, related_modules, thresholds, channel, homolog, t_cloud=False)
 
         if answer:
           parameters.update(parms)
           custom_log = get_custom_log(parameters)
         
           # Retornamos a resposta para o usuário
-          return textResponse(f'{answer}', jumpTo='Criar ticket de log', customLog=custom_log)
+          return textResponse(f'{answer}', shortResponse=mobile_answer, jumpTo='Criar ticket de log', customLog=custom_log)
 
       # Lê a quantidade de tentativas que o usuário já fez. Caso seja a primeira tentativa o valor padrão é 0.
       attempts = parameters.get('attempts', 0)
