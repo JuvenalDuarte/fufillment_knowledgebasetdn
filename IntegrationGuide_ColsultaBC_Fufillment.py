@@ -328,6 +328,10 @@ def get_results(login, results, channel, k=3, segment=None):
 
     # Usando o analytics como critério de desempate
     # ---------------------------------------------
+
+    # Sinaliza que já foi aplicado um desempate
+    empate_flag = False
+    
     if segment == 'Plataformas':
 
         # Organiza os artigos em buckets com o mesmo score
@@ -357,9 +361,6 @@ def get_results(login, results, channel, k=3, segment=None):
 
         # Adiciona o último bucket
         same_score_buckets.append(same_score)
-
-        # Sinaliza que já foi aplicado um desempate
-        empate_flag = False
 
         # Ordena cada um dos buckets pelo analytics
         results = []
