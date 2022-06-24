@@ -15,6 +15,63 @@ def get_custom_log(parameters):
     custom_log = json.dumps(custom_log)
     return custom_log
 
+from xml.sax.saxutils import escape
+
+#---Tradução---
+
+
+def getCloudSQLEngine():
+  import sqlalchemy
+
+  DB_CONFIG = {
+    "pool_size": 5,
+    "max_overflow": 2,
+    "pool_timeout": 30,  # 30 seconds
+    "pool_recycle": 1800,  # 30 minutes
+  }
+
+  URL = sqlalchemy.engine.url.URL.create(
+    drivername="postgresql+psycopg2",
+    username='default',
+    password='dVLLwIFOOrWZgR34u7fbRhArI2pECtYNVD',
+    database='support_assistant',
+    port=5432,
+    host='cloud-proxy-prod-mdm-1-carolina-assistant-cache.carolina-assistant-cache-proxy'
+  )
+
+  engine = sqlalchemy.create_engine(URL, **DB_CONFIG)
+  return engine
+
+def GetMessage(id, language):
+
+  #portugues = pt-BR
+  #ingles = en-US
+  #espanhol = es
+  # Preparando a query
+  if language == "es":
+    column = "espanhol_web"
+  elif language == "en-US":
+    column = "ingles_web"
+  else:
+    column = "portugues_web"
+      
+  sql_code = f"SELECT {column} AS message FROM traducao WHERE id = \'{id}\'"
+  
+  # Executando a consulta
+  sqlengine = getCloudSQLEngine()
+  conn = sqlengine.connect()
+  results = conn.execute(sql_code)
+  all_rows = results.all()
+  conn.close()
+  sqlengine.dispose()
+  
+  # Processando e retornando os resultados
+  if all_rows:
+    first_hit = all_rows[0]
+    return first_hit.message
+  else:
+    return None
+#--------------------------------
 
 def remove_punctuation(sentence):
     import string
@@ -101,7 +158,9 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
         # Adicionamos ao início da resposta o título do artigo de melhor match com sua respectiva URL de acesso
         answer = f'<br><b><a target="{target}" rel="noopener noreferrer" href="{header_ref}" style="text-decoration: underline"><strong>{header}</strong></a></b><br>' + content
         # Na versão simplificada da resposta adicionamos somente O titulo do aritgo encontrado e a URL em seguida.
-        mobile_answer = f"Principal conteúdo encontrado: {header} ({header_ref})"
+        resposta = GetMessage(id = 'msg.interguide.consultabc.1', language=language).replace("{header}", header)
+        resposta = resposta.replace("{header_ref}", header_ref)
+        mobile_answer = resposta
         
         # Caso o artigo com maior score seja do TDN adicionamos o link para o patch, caso disponível
         if best_match.get('database') == "TDN":
@@ -125,22 +184,22 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
                     v = "Todas" if (str(kv).lower() in ["none", "null", "nan", "", " "]) else kv
                     patch_links.append(f'<a target="{target}" rel="noopener noreferrer" href="{patches_d[kv]}" style="text-decoration: underline">{v}</a>')
 
-                answer += f'<br>Selecione a versão para baixar pacote de atualização:' + ", ".join(patch_links)
-                mobile_answer += "\nNota: Patch de atualização disponível para esse problema, consulte via web"
+                answer += f'<br>'+GetMessage(id = 'msg.interguide.consultabc.2',language = language) + ", ".join(patch_links)
+                mobile_answer += "\n" + GetMessage(id = 'msg.interguide.consultabc.3',language = language)
 
     # Artigos secundários: Os demais artigos são exibidos de maneira resumida, só título e url, sem detalhes.
     url_list = []
     if len(results) > 1:
         if not pageviews:
             #results.pop(results.index(best_match))
-            answer = answer + '<br><br>Aqui tenho outros artigos que podem ajudar:'
-            mobile_answer = mobile_answer + '\n\nAqui tenho outros artigos que podem ajudar:'
+            answer = answer + '<br><br>' +  GetMessage(id = 'msg.interguide.consultabc.4',language = language)
+            mobile_answer = mobile_answer + '\n\n'+ GetMessage(id = 'msg.interguide.consultabc.4',language = language)
             tmp_results = results[:k]
 
         else:
-            answer = 'Sua busca foi abrangente e retornou muitos resultados.'
-            answer += f'<br>Aqui estão os {len(results)} artigos relacionados à sua pergunta que foram mais consultados pelos nossos clientes.'
-            mobile_answer = f'Sua busca foi abrangente, aqui estão os {len(results)} artigos mais consultados sobre o tema:'
+            answer =  GetMessage(id = 'msg.interguide.consultabc.5',language = language)
+            answer += f'<br>' +  GetMessage(id = 'msg.interguide.consultabc.6',language = language)
+            mobile_answer = f''+ GetMessage(id = 'msg.interguide.consultabc.7',language = language)
             tmp_results = results[:5]
 
     else:
@@ -174,9 +233,9 @@ def get_answer(best_match, results, field_mapping, k=3, pageviews=False, channel
         else:
             section = 'Clique aqui'
 
-        answer += f'<br>Caso o artigo que você procura não tenha sido apresentado acima você ainda pode procurá-lo aqui na seção:'
+        answer += f'<br>'+ GetMessage(id = 'msg.interguide.consultabc.8',language = language)
         answer += f'<br><b><a target="{target}" rel="noopener noreferrer" href="{section_url}" style="text-decoration: underline">{section}</a></b><br>'
-        mobile_answer += f'Você também pode navegar pela seção para mais artigos:\n{section_url}'
+        mobile_answer += f''+ GetMessage(id = 'msg.interguide.consultabc.9',language = language)+'\n{section_url}'
 
     return answer, mobile_answer, url_list, header, header_ref, labels
     
@@ -302,8 +361,17 @@ def get_model_answer(sentence, segment, product, module, threshold, homolog, clo
   # se nenhuma tiver sucesso informa o usuário da instabilidade.	
   retries = 3	
   status_code = -1	
+
   while (status_code != 200) and (retries > 0):	
-    response = requests.post(url=api_url, json=data, headers=h)	
+    try:
+      response = requests.post(url=api_url, json=data, headers=h)	
+
+    # Por algum motivo a API está retornando uma resposta incompleta
+    except requests.exceptions.ConnectionError as e:
+      retries -= 1
+      time.sleep(1)
+      continue
+  
     status_code = response.status_code	
     retries -= 1	
     if (status_code != 200): time.sleep(1)
@@ -326,62 +394,13 @@ def get_results(login, results, channel, k=3, segment=None):
     # avaliando se é necessário usar as métricas do Analytics
     import re
 
-    # Usando o analytics como critério de desempate
-    # ---------------------------------------------
-
-    # Sinaliza que já foi aplicado um desempate
-    empate_flag = False
-    
-    if segment == 'Plataformas':
-
-        # Organiza os artigos em buckets com o mesmo score
-        same_score_buckets = []
-
-        # agrupa os artigos de mesmo score para depois coloca-los nos buckets
-        same_score = []
-
-        # Primeiro separa todos os artigos empatados nas primeiras posicoes
-        for r in results:
-
-            # Se o bucket ja estiver inicializado
-            if same_score:
-
-                # Se o score for igual adiciona o artigo ao mesmo bucket
-                if same_score[-1].get('score') == r.get('score'):
-                    same_score.append(r)
-
-                # Do contrário fecha o bucket anterior e inicia um novo
-                else:
-                    same_score_buckets.append(same_score)
-                    same_score = [r]
-
-            # Senão o inicializa
-            else:
-                same_score.append(r)
-
-        # Adiciona o último bucket
-        same_score_buckets.append(same_score)
-
-        # Ordena cada um dos buckets pelo analytics
-        results = []
-        for bucket in same_score_buckets:
-
-            # Se houver empate entre 2 ou mais artigos...
-            if len(bucket) > 1:
-                results += orderby_page_views(login, article_results=bucket)
-                empate_flag = True
-
-            # Caso não haja empate
-            else:
-                results += bucket
-
     # Caso houverem muitos resultados para uma busca KCS, seleciona os artigos mais vistos
     # ATENÇÂO: Quando temos muitos artigos os documentos TDN são descartados, pois ainda não temos
     # page views para estes artigos.
     pv=False
     higher_than_95 = [r for r in results if r.get('score') > 0.95]
-
-    if (not empate_flag) and (len(results) > 5) and (segment == 'Plataformas') and (len(higher_than_95) > 5):
+    #if (len(results) > 10) and (not higher_than_95 or len(higher_than_95) > 5):
+    if (len(results) > 5) and (segment == 'Plataformas') and (len(higher_than_95) > 5):
         results = orderby_page_views(login, article_results=results)
         pv=True
         # Para o caso de page views o cliente quer ver os top 5
@@ -462,7 +481,7 @@ def get_answer_from_sentence(login, username, debug, filtered_sentence, segment,
     # retornado negativo.
     if total_matches_unified < 0:
         http_error = abs(total_matches_unified)
-        answer = f'Desculpe, parece que tivemos alguma instabilidade em nosso sistema (HTTP{http_error}), vamos tentar novamente.'
+        answer = f''+ GetMessage(id = 'msg.interguide.consultabc.10',language = language)
         mobile_answer = answer
 
         # Retornamos a resposta para o usuário
@@ -515,7 +534,7 @@ def get_answer_from_sentence(login, username, debug, filtered_sentence, segment,
                 'Automação e Coleta de Dados (SIGAACD)',
                 'Easy Siscoserv (SIGAESS)']
                 
-    tdn_hml =  []
+    tdn_hml =  ['Segurança (SEC)']
 
     tdn_all = list(set(tdn_prd + tdn_hml))
 
@@ -557,8 +576,8 @@ def get_answer_from_sentence(login, username, debug, filtered_sentence, segment,
             name = f'{username}, n'
         else:
             name = 'N'
-        answer = f'{name}ão encontrei uma resposta no módulo {module}, mas talvez consiga ajuda-lo com artigos do módulo <b>{best_match_module}</b>.<br><br>' + answer
-        mobile_answer = f'{name}ão encontrei uma resposta no módulo {module}, mas talvez consiga ajuda-lo com artigos do módulo <b>{best_match_module}' + mobile_answer
+        answer = f'{name},' + GetMessage(id = 'msg.interguide.consultabc.11',language = language) + '<b>{best_match_module}</b>.<br><br>' + answer
+        mobile_answer = f'{name},'+ GetMessage(id = 'msg.interguide.consultabc.11',language = language) +'<b>{best_match_module}' + mobile_answer
 
     parameters.update(parms)
 
@@ -610,6 +629,9 @@ def main():
     from fuzzywuzzy import fuzz
     from unidecode import unidecode
 
+    language = parameters.get('lang')
+    language = "pt-BR" if language is None else language 
+
     # Opções de respostas para quando o usuário enviar apenas uma palavra na pergunta.
     respostas_uma_palavra = ['Poderia detalhar um pouco mais sua dúvida?',
              'Me conte com mais detalhes a sua dúvida.',
@@ -648,7 +670,7 @@ def main():
     
     # Cria uma variável temporária que é a versão em minúsculo e sem caracteres especiais da questão do usuário.
     if not question:
-      return textResponse('Desculpe, não consegui entender sua pergunta.', jumpTo='Duvida')
+      return textResponse(GetMessage(id = 'msg.interguide.consultabc.16',language = language), jumpTo='Duvida')
 
     question_tmp = unidecode(question.lower())
     jump_to = None
@@ -658,7 +680,7 @@ def main():
         name = f'{username}, i'
       else:
         name = 'I'
-      return textResponse('{name}nfelizmente não sei sobre as atividades do desenvolvimento, contate o PO deste produto.', jumpTo='Pergunta central', customLog=custom_log)
+      return textResponse(f'{name}'+GetMessage(id = 'msg.interguide.consultabc.17',language = language), jumpTo='Pergunta central', customLog=custom_log)
 
     # Só enviamos a pergunta do usuário para o modelo caso o módulo e o produto tenham sido informados.  
     if question and module and product:
@@ -737,7 +759,7 @@ def main():
         if thresholds_results:
           thresholds_str = thresholds_results[0].get('thresholds')
           thresholds = [int(threshold.strip()) for threshold in thresholds_str.split(',') if threshold.strip().isnumeric()]
-      
+      #-----thresholds-----
       if not thresholds:
         if segment.lower() == 'plataformas':
           thresholds = [85, 75, 65]
@@ -777,7 +799,7 @@ def main():
       # Lê a quantidade de tentativas que o usuário já fez. Caso seja a primeira tentativa o valor padrão é 0.
       attempts = parameters.get('attempts', 0)
       body = copy.deepcopy(parameters.get('body', 'Últimas perguntas:'))
-      answer = 'Desculpe, eu ainda não sei responder esta pergunta.'
+      answer = GetMessage(id = 'msg.interguide.consultabc.18',language = language)
       # Adicionamos uma tentativa às tentativas do usuário
       attempts = int(attempts) + 1
       body += f'\n{attempts}ª Pergunta: {question}\n'
@@ -789,7 +811,7 @@ def main():
       # Caso ainda não tenham sido feitas 3 tentativas pedimos para os usuários
       # tentarem refazer a consulta usando outras palavras
       if attempts < 3:
-        answer += ' Você poderia digitar sua dúvida com outras palavras?'
+        answer += GetMessage(id = 'msg.interguide.consultabc.19',language = language)
       # Caso as 3 tentativas já tenham sido feitas levamos os usuários para o fluxo
       # de transbordo ou abertura de ticket
       else:
@@ -831,11 +853,11 @@ def main():
     # guiamos o usuário para o nó de autenticação
     if channel != 'portal' and not email:
       jump_to = 'Autenticação do Cliente'
-      complementary_message = ' Mas antes precisamos te autenticar novamente.'
+      complementary_message = GetMessage(id = 'msg.interguide.consultabc.20',language = language)
     # Caso contrário o guiamos para o nó de identificar assunto onde
     # caso eles queiram fazer perguntas sobre o produto deverão fornecer
     # o nome do módulo
     else:
       jump_to = 'Identificar assunto'
         
-    return textResponse(f'Tudo bem, voltando ao início.{complementary_message}', jumpTo=jump_to, customLog=custom_log)
+    return textResponse(f''+GetMessage(id = 'msg.interguide.consultabc.21',language = language)+'{complementary_message}', jumpTo=jump_to, customLog=custom_log)
