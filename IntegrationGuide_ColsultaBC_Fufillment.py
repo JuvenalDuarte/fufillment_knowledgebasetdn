@@ -42,6 +42,7 @@ def getCloudSQLEngine():
   engine = sqlalchemy.create_engine(URL, **DB_CONFIG)
   return engine
 
+'''
 def GetMessage(id, language):
 
   #portugues = pt-BR
@@ -49,11 +50,11 @@ def GetMessage(id, language):
   #espanhol = es
   # Preparando a query
   if language == "es":
-    column = "espanhol_web"
+      column = "espanhol_web"
   elif language == "en-US":
-    column = "ingles_web"
+      column = "ingles_web"
   else:
-    column = "portugues_web"
+      column = "portugues_web"
       
   sql_code = f"SELECT {column} AS message FROM traducao WHERE id = \'{id}\'"
   
@@ -67,11 +68,48 @@ def GetMessage(id, language):
   
   # Processando e retornando os resultados
   if all_rows:
-    first_hit = all_rows[0]
-    return first_hit.message
+      first_hit = all_rows[0]
+      return first_hit.message
   else:
-    return None
-#--------------------------------
+      return None
+'''
+
+def GetMessage(id, language):
+
+    #portugues = pt-BR
+    #ingles = en-US
+    #espanhol = es
+    # Preparando a query
+    if language == "es": column = "espanhol_web"
+    elif language == "en-US": column = "ingles_web"
+    else: column = "portugues_web"
+
+    # As there are many calls along the code, we make a single call to the DB and cache the results
+    global translated_messages_d
+    
+    if not translated_messages_d:
+        idl = id.split(".")
+        del idl[-1]
+        generic_id = ".".join(idl)
+        
+        id_pattern = f"'%%{generic_id}%%'"
+        sql_code = f"SELECT {column} AS message, id FROM traducao WHERE id like {id_pattern}"
+
+        # Executando a consulta
+        sqlengine = getCloudSQLEngine()
+        conn = sqlengine.connect()
+        results = conn.execute(sql_code)
+        all_rows = results.all()
+        conn.close()
+        sqlengine.dispose()
+
+        # Processando e retornando os resultados
+        translated_messages_d = {}
+        for m in all_rows:
+            translated_messages_d[m.id] = m.message
+
+    return translated_messages_d.get(id, f"Message {id} nof found.")
+
 
 def remove_punctuation(sentence):
     import string
@@ -313,13 +351,35 @@ def top_page_views(login, module, k=5):
 
     return best_match, article_results_ranked
 
-
-def get_model_answer(sentence, segment, product, module, threshold, homolog, cloud=False):	
+def get_model_answer(sentence, segment, product, module, threshold, homolog, cloud=False, lang="pt"):	
   # Fazemos a consulta na API do modelo	
   import requests	
   import time	
+  login = Carol(domain='protheusassistant',
+              app_name=' ',
+              organization='totvs',
+              auth=ApiKeyAuth('d8fe3b6b00074a8d81774551397040f4'),
+              connector_id='f9953f6645f449baaccd16ab462f9b64')
+      # Criamos uma instancia da classe Query da Carol
+  query = Query(login)
+  
+  params = {'id_lingua':language}  
+  response = query.named(named_query = 'get_country_by_language', json_query=params).go().results 
+  #country = [item.get('country_1') for item in response]
+
+  if homolog and response:	
+    
+    doc_countries = [item.get('country_1') for item in response]
+
+    # Filtra apenas artigos no idioma da conversa
+    filters = [{'filter_field': 'country', 'filter_value': doc_countries}]
+
+  else:
+    filters = []
+  
   # Adicionamos o produto aos filtros da consulta	
-  filters = [{'filter_field': 'product', 'filter_value': product}]	
+  filters.append({'filter_field': 'product', 'filter_value': product})
+  	
   # Caso haja um módulo o adicionamos aos filtros da consulta	
   if module:	
     filters.append({'filter_field': 'module', 'filter_value': module})	
@@ -460,6 +520,7 @@ def get_results(login, results, channel, k=3, segment=None):
     # Adicionada uma section default para não quebrar o fluxo quando a section não esta disponível
     parameters['section_id'] = best_match.get('section_id')
     parameters['module'] = best_match.get('module')
+    #X1
 
     for i, url in enumerate(url_list):
         if url:
@@ -468,10 +529,10 @@ def get_results(login, results, channel, k=3, segment=None):
     return answer, mobile_answer, best_match, parameters
 
 
-def get_answer_from_sentence(login, username, debug, filtered_sentence, segment, product, module, related_products, related_modules, thresholds, channel, homolog, t_cloud):
+def get_answer_from_sentence(login, username, debug, filtered_sentence, segment, product, module, related_products, related_modules, thresholds, channel, homolog, t_cloud, lang):
     # Enviamos a pergunta do usuário para o modelo com seus respectivos produto, módulo, bigrams e trigrams
     # Nesta etapa usamos o menor threshold para obter o maior número de matches.
-    results_unified, total_matches_unified = get_model_answer(filtered_sentence, segment, product, module, thresholds[-1], homolog, t_cloud)
+    results_unified, total_matches_unified = get_model_answer(filtered_sentence, segment, product, module, thresholds[-1], homolog, t_cloud, lang=lang)
 
     answer = ''
     mobile_answer = ''
@@ -480,18 +541,18 @@ def get_answer_from_sentence(login, username, debug, filtered_sentence, segment,
     # Se o numero de matches for menor que zero isso significa que houve erro na chamada da API, o status code será
     # retornado negativo.
     if total_matches_unified < 0:
-        http_error = abs(total_matches_unified)
-        answer = f''+ GetMessage(id = 'msg.interguide.consultabc.10',language = language)
-        mobile_answer = answer
+      http_error = abs(total_matches_unified)
+      answer = GetMessage(id = 'msg.interguide.consultabc.10',language = language).replace("{http_error}",str(http_error))
+      mobile_answer = answer
 
-        # Retornamos a resposta para o usuário
-        return answer, mobile_answer, parameters
+      # Retornamos a resposta para o usuário
+      return answer, mobile_answer, parameters
 
     if debug:
-        answer = f"search: {filtered_sentence}; product: {product}; module: {module}; threshold: {thresholds[-1]}.\n"
-        answer += f"results: {results_unified}\n."
-        mobile_answer = answer
-        return answer, mobile_answer, parameters
+      answer = f"search: {filtered_sentence}; product: {product}; module: {module}; threshold: {thresholds[-1]}.\n"
+      answer += f"results: {results_unified}\n."
+      mobile_answer = answer
+      return answer, mobile_answer, parameters
 
 
     # TDN habilitado apenas para plataformas por enquanto
@@ -542,7 +603,7 @@ def get_answer_from_sentence(login, username, debug, filtered_sentence, segment,
     # Nesta etapa usamos o menor threshold para obter o maior número de matches.
     related_modules_results = []
     if related_modules:
-        related_modules_results, related_modules_total_matches = get_model_answer(filtered_sentence, segment, related_products, related_modules, thresholds[-1], homolog, t_cloud)
+        related_modules_results, related_modules_total_matches = get_model_answer(filtered_sentence, segment, related_products, related_modules, thresholds[-1], homolog, t_cloud, lang=lang)
 
     # Iteramos a lista de threshold, de forma a irmos diminuindo o threshold
     # até obtermos uma resposta
@@ -573,10 +634,11 @@ def get_answer_from_sentence(login, username, debug, filtered_sentence, segment,
     best_match_module = best_match.get('module')
     if module and best_match_module != module:
         if username:
-            name = f'{username}, n'
+            name = f'{username}, não'
         else:
             name = 'N'
-        answer = f'{name},' + GetMessage(id = 'msg.interguide.consultabc.11',language = language) + '<b>{best_match_module}</b>.<br><br>' + answer
+        answer = f'{name},' + GetMessage(id = 'msg.interguide.consultabc.11',language = language) + f'<b>{best_match_module}</b>.<br><br>' + answer
+        answer = answer.replace("{module}",module)
         mobile_answer = f'{name},'+ GetMessage(id = 'msg.interguide.consultabc.11',language = language) +'<b>{best_match_module}' + mobile_answer
 
     parameters.update(parms)
@@ -629,8 +691,13 @@ def main():
     from fuzzywuzzy import fuzz
     from unidecode import unidecode
 
+    global translated_messages_d 
+    translated_messages_d = None
+    
     language = parameters.get('lang')
-    language = "pt-BR" if language is None else language 
+    language = "pt-BR" if language is None else language
+
+   
 
     # Opções de respostas para quando o usuário enviar apenas uma palavra na pergunta.
     respostas_uma_palavra = ['Poderia detalhar um pouco mais sua dúvida?',
@@ -700,6 +767,8 @@ def main():
       # Criamos uma instancia da classe Query da Carol
       query = Query(login)
 
+    
+
       # Atualizamos os dados de acesso do usuário com o produto, módulo e e-mail do usuário.
       if not test:
         update_user_access(login, product, module, segment, question, email)
@@ -718,6 +787,7 @@ def main():
         return textResponse(f'{answer}', shortResponse=mobile_answer, jumpTo='Criar ticket de log', customLog=custom_log)
 
       # TODO: Família de módulos
+      #X2
       related_modules = []
       related_products = []
       if segment.lower() == 'plataformas' or segment.lower() == 'supply':
@@ -739,9 +809,11 @@ def main():
       # Se o módulo for do produto Framework (Linha RM) ou Framework (Linha Datasul) usar
       # todos os módulos do produto na busca.
       if module == 'TOTVS Educacional' or module == 'Educacional' or product == 'Educacional':
+        parameters["salva_module"] = 'Educacional'
         product = ['App TOTVS EduConnect', 'Educacional']
         module = None
       elif module in ['Framework', 'Framework e Tecnologia', 'TOTVS CRM'] or product in ['Gestão de Imóveis', 'Obras e Projetos', 'TOTVS Aprovações e Atendimento']:
+        parameters["salva_module"] = 'Framework'
         module = None
 
       # Salvamos a pergunta do usuário nos parâmetros para usar esta informações em outro nó.  
@@ -773,11 +845,16 @@ def main():
       if segment == 'TOTVS Cloud' and cloud_products and any(cloud_product.lower() in product.lower() for cloud_product in cloud_products):
         t_cloud = True
 
-      answer, mobile_answer, parms = get_answer_from_sentence(login, username, debug, filtered_sentence, segment, product, module, related_products, related_modules, thresholds, channel, homolog, t_cloud)
+      answer, mobile_answer, parms = get_answer_from_sentence(login, username, debug, filtered_sentence, segment, product, module, related_products, related_modules, thresholds, channel, homolog, t_cloud, lang=language)
       
       if answer:
         parameters.update(parms)
         custom_log = get_custom_log(parameters)
+
+        if parameters.get('zendesk_form_subject', None):
+          answer_form = "{user}, encontrei uma resposta no módulo <b>{module}</b> do produto <b>{product}</b>, veja se essa resposta lhe ajuda. 😃.\n\n"
+          answer_form = answer_form.replace("{user}", username).replace("{module}", module).replace("{product}", product)
+          answer = answer_form + answer
       
         # Retornamos a resposta para o usuário
         return textResponse(f'{answer}', shortResponse=mobile_answer, jumpTo='Criar ticket de log', customLog=custom_log)
@@ -787,11 +864,16 @@ def main():
       # de transbordo ou abertura de ticket.
 
       if t_cloud:
-        answer, mobile_answer, parms = get_answer_from_sentence(login, username, debug, filtered_sentence, segment, product, module, related_products, related_modules, thresholds, channel, homolog, t_cloud=False)
+        answer, mobile_answer, parms = get_answer_from_sentence(login, username, debug, filtered_sentence, segment, product, module, related_products, related_modules, thresholds, channel, homolog, t_cloud=False, lang=language)
 
         if answer:
           parameters.update(parms)
           custom_log = get_custom_log(parameters)
+
+        if parameters.get('zendesk_form_subject', None):
+          answer_form = "{user}, encontrei uma resposta no módulo <b>{module}</b> do produto <b>{product}</b>, veja se essa resposta lhe ajuda. 😃.\n\n"
+          answer_form = answer_form.replace("{user}", username).replace("{module}", module).replace("{product}", product)
+          answer = answer_form + answer
         
           # Retornamos a resposta para o usuário
           return textResponse(f'{answer}', shortResponse=mobile_answer, jumpTo='Criar ticket de log', customLog=custom_log)
@@ -799,7 +881,10 @@ def main():
       # Lê a quantidade de tentativas que o usuário já fez. Caso seja a primeira tentativa o valor padrão é 0.
       attempts = parameters.get('attempts', 0)
       body = copy.deepcopy(parameters.get('body', 'Últimas perguntas:'))
-      answer = GetMessage(id = 'msg.interguide.consultabc.18',language = language)
+
+      answer_form = "Infelizmente não encontrei uma resposta correspondente com o campo assunto."
+      answer = answer_form if parameters.get('zendesk_form_subject', None) else GetMessage(id = 'msg.interguide.consultabc.18',language = language) + ' '
+
       # Adicionamos uma tentativa às tentativas do usuário
       attempts = int(attempts) + 1
       body += f'\n{attempts}ª Pergunta: {question}\n'
@@ -811,7 +896,10 @@ def main():
       # Caso ainda não tenham sido feitas 3 tentativas pedimos para os usuários
       # tentarem refazer a consulta usando outras palavras
       if attempts < 3:
-        answer += GetMessage(id = 'msg.interguide.consultabc.19',language = language)
+
+        answer_form = "Posso te ajudar a encontrar soluções para sua requisição antes de abrir um ticket. Me conte aqui com outras palavras."
+        answer += answer_form if parameters.get('zendesk_form_subject', None) else GetMessage(id = 'msg.interguide.consultabc.19',language = language)
+
       # Caso as 3 tentativas já tenham sido feitas levamos os usuários para o fluxo
       # de transbordo ou abertura de ticket
       else:
